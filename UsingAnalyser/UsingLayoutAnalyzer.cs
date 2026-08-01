@@ -27,7 +27,7 @@ public sealed class UsingLayoutAnalyzer : DiagnosticAnalyzer
     private static readonly DiagnosticDescriptor OrderRule = new(
         OrderDiagnosticId,
         title: "Using directives are out of order",
-        messageFormat: "'{0}' is out of order: using directives run System, then third party, then first party, each block sorted alphabetically",
+        messageFormat: "'{0}' should appear after '{1}'",
         category: "Ordering",
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
@@ -36,7 +36,7 @@ public sealed class UsingLayoutAnalyzer : DiagnosticAnalyzer
     private static readonly DiagnosticDescriptor SeparationRule = new(
         SeparationDiagnosticId,
         title: "Using blocks are not separated by a blank line",
-        messageFormat: "Blank-line separation is wrong at '{0}': one blank line goes between using blocks, and nowhere else",
+        messageFormat: "'{0}' {1} be preceded by a blank line",
         category: "Ordering",
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
@@ -100,7 +100,14 @@ public sealed class UsingLayoutAnalyzer : DiagnosticAnalyzer
         {
             if (usings[index] != ordered[index])
             {
-                context.ReportDiagnostic(Diagnostic.Create(OrderRule, usings[index].GetLocation(), Describe(usings[index])));
+                // Reported on the directive sitting in the wrong place, naming the one that belongs
+                // there. Everything above this point already matches, so the directive that belongs
+                // here is further down the file, which makes "should appear after" true every time.
+                context.ReportDiagnostic(Diagnostic.Create(
+                    OrderRule,
+                    usings[index].GetLocation(),
+                    Describe(usings[index]),
+                    Describe(ordered[index])));
                 return;
             }
         }
@@ -110,7 +117,11 @@ public sealed class UsingLayoutAnalyzer : DiagnosticAnalyzer
             var wanted = UsingLayout.NeedsSeparation(usings[index - 1], usings[index], options);
             if (wanted != UsingLayout.HasSeparation(usings[index - 1], usings[index]))
             {
-                context.ReportDiagnostic(Diagnostic.Create(SeparationRule, usings[index].GetLocation(), Describe(usings[index])));
+                context.ReportDiagnostic(Diagnostic.Create(
+                    SeparationRule,
+                    usings[index].GetLocation(),
+                    Describe(usings[index]),
+                    wanted ? "should" : "should not"));
                 return;
             }
         }
