@@ -1,0 +1,62 @@
+# Builds and runs the suite on every push, and publishes on a version tag.
+#
+# The suite is the gate rather than a formality: this analyser is subject to its own rule, so a
+# change that makes the rule disagree with real source fails the build here rather than reaching
+# someone's repository as a package that reorders their usings wrongly.
+name: build and test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          # No global.json pins this, so the version lives here. The analyser assemblies target
+          # netstandard2.0 because that is what the compiler and the IDE will load; the test project
+          # targets net10.0 and is developed against 10.0.302.
+          dotnet-version: '10.0.x'
+
+      - name: Test
+        run: dotnet test UsingAnalyser.slnx --nologo
+
+  publish:
+    # Only a version tag publishes, and only behind a green suite. A package that was never tested is
+    # worse than no package, because it is the one people will actually install.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # The tag is the version. Nothing in the repository can then disagree with what shipped, which
+      # is the failure mode of a version number kept in a csproj and remembered by hand.
+      - name: Pack
+        run: >
+          dotnet pack UsingAnalyser.CodeFixes/UsingAnalyser.CodeFixes.csproj
+          --configuration Release
+          --output artifacts
+          -p:Version=${GITHUB_REF_NAME#v}
+
+      # --skip-duplicate so re-running a failed job is not itself an error. nuget.org keeps a version
+      # forever; pushing the same one twice is a mistake worth ignoring rather than failing on.
+      - name: Publish to nuget.org
+        run: >
+          dotnet nuget push artifacts/*.nupkg
+          --source https://api.nuget.org/v3/index.json
+          --api-key "${{ secrets.NUGET_API_KEY }}"
+          --skip-duplicate

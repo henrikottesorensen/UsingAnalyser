@@ -16,6 +16,7 @@
         <Description>Groups using directives as System, third party, then first party, and keeps each block sorted.</Description>
         <Authors>Henrik O. Sørensen</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageProjectUrl>https://github.com/henrikottesorensen/UsingAnalyser</PackageProjectUrl>
         <RepositoryUrl>https://github.com/henrikottesorensen/UsingAnalyser</RepositoryUrl>
         <PackageTags>analyzer;roslyn;usings;codefix;editorconfig</PackageTags>
@@ -37,6 +38,10 @@
     </ItemGroup>
 
     <ItemGroup>
+        <!-- The nuget.org page is otherwise blank, and the two settings a consumer has to change
+             before this builds clean are in there. -->
+        <None Include="../README.md" Pack="true" PackagePath="" Visible="false" />
+
         <!-- Both halves ship in the one package, in the one folder Roslyn looks in. -->
         <None Include="$(OutputPath)UsingAnalyser.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
         <None Include="$(OutputPath)UsingAnalyser.CodeFixes.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
