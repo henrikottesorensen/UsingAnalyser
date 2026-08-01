@@ -103,7 +103,7 @@ dotnet format analyzers YourSolution.slnx --diagnostics UA1000 UA1001 --severity
 Two settings have to give way first, or they will fight the new layout:
 
 - **SA1210 must go to `none`.** This is not optional. SA1210 sorts the whole list alphabetically, and
-  a first-party root that sorts before a vendor - `Homespool` before `Microsoft`, say - is exactly
+  a first-party root that sorts before a vendor - `Contoso` before `Microsoft`, say - is exactly
   what this scheme moves to the bottom. With SA1210 on, every fixed file becomes an SA1210 warning,
   and under `TreatWarningsAsErrors` that is a broken build. UA1000 takes over sorting entirely.
 - **`dotnet_separate_import_directive_groups` should go to `false`,** or the editor's sort-usings
@@ -122,3 +122,7 @@ SA1208, SA1209, SA1211, SA1216 and SA1217 can stay: the layout puts System first
   top. A comment with no blank line under it belongs to the directive below it and travels with it.
 - **The file's line endings**, taken from the file rather than assumed, so a fix never turns into a
   whole-file diff on the other platform.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).

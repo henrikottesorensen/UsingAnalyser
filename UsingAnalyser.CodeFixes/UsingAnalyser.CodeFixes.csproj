@@ -14,6 +14,11 @@
         <PackageId>UsingLayoutAnalyser</PackageId>
         <Version>0.1.0</Version>
         <Description>Groups using directives as System, third party, then first party, and keeps each block sorted.</Description>
+        <Authors>Henrik O. Sørensen</Authors>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageProjectUrl>https://github.com/henrikottesorensen/UsingAnalyser</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/henrikottesorensen/UsingAnalyser</RepositoryUrl>
+        <PackageTags>analyzer;roslyn;usings;codefix;editorconfig</PackageTags>
         <IsPackable>true</IsPackable>
         <DevelopmentDependency>true</DevelopmentDependency>
         <IncludeBuildOutput>false</IncludeBuildOutput>
