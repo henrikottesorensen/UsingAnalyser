@@ -25,8 +25,11 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\UsingAnalyser\UsingAnalyser.csproj" />
-        <ProjectReference Include="..\UsingAnalyser.CodeFixes\UsingAnalyser.CodeFixes.csproj" />
+        <!-- OutputItemType alongside the ordinary reference, so these are both the types under test
+             and the analyser running over this project's own source. The rule is meant to be lived
+             with; if it is wrong about a real file, the build here should be the thing that says so. -->
+        <ProjectReference Include="..\UsingAnalyser\UsingAnalyser.csproj" OutputItemType="Analyzer" />
+        <ProjectReference Include="..\UsingAnalyser.CodeFixes\UsingAnalyser.CodeFixes.csproj" OutputItemType="Analyzer" />
     </ItemGroup>
 
     <ItemGroup>

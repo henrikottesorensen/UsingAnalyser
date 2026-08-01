@@ -31,7 +31,9 @@
              Workspaces, the compiler never loads Workspaces, and an analyser assembly that drags it
              in is the RS1038 case that fails to load during a command-line build. -->
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" PrivateAssets="all" />
-        <ProjectReference Include="..\UsingAnalyser\UsingAnalyser.csproj" />
+        <!-- OutputItemType so the analyser also runs over this project. Its own using block is the
+             one that caught the ordinal-sorting bug, which nothing here would have noticed. -->
+        <ProjectReference Include="..\UsingAnalyser\UsingAnalyser.csproj" OutputItemType="Analyzer" />
     </ItemGroup>
 
     <ItemGroup>

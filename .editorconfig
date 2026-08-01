@@ -8,5 +8,10 @@ insert_final_newline = true
 indent_style = space
 indent_size = 4
 
+# This repository is subject to its own rule. UsingAnalyser is the solution's own root, so the
+# analyser's assemblies count as first party to each other.
+[*.cs]
+usinglayout.first_party_prefixes = UsingAnalyser
+
 [*.md]
 trim_trailing_whitespace = false
