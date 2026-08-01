@@ -104,19 +104,41 @@ both assemblies where Roslyn looks for them.
 dotnet format analyzers YourSolution.slnx --diagnostics UA1000 UA1001 --severity warn
 ```
 
-Two settings have to give way first, or they will fight the new layout:
+Three settings, and the canonical layout then builds clean:
 
-- **SA1210 must go to `none`.** This is not optional. SA1210 sorts the whole list alphabetically, and
-  a first-party root that sorts before a vendor - `Contoso` before `Microsoft`, say - is exactly
-  what this scheme moves to the bottom. With SA1210 on, every fixed file becomes an SA1210 warning,
-  and under `TreatWarningsAsErrors` that is a broken build. UA1000 takes over sorting entirely.
-- **`dotnet_separate_import_directive_groups` must go to `false`.** Not just because the editor's
-  sort-usings action regroups behind you: with it on, IDE0055 reports the canonical layout as a
-  formatting error, so under `EnforceCodeStyleInBuild` it is a build warning. Flipping that one key
-  clears it, everything else held constant.
+```ini
+csharp_using_directive_placement = outside_namespace:error
+dotnet_separate_import_directive_groups = false
+dotnet_diagnostic.SA1210.severity = none
+```
 
-SA1208, SA1209, SA1211, SA1216 and SA1217 can stay: the layout puts System first, and keeps
-`using static` and aliases as trailing blocks in the order those rules want.
+## Which other rules this touches
+
+Measured rather than reasoned about, against StyleCop.Analyzers 1.2.0.556 with every `Style` category
+rule at warning, on a canonical file including statics and aliases.
+
+**Conflicts. These two must be configured, or the layout will not build clean.**
+
+| Rule | What happens | Settle it with |
+|------|--------------|----------------|
+| `SA1210` | Sorts the whole list alphabetically, so it wants third party and first party interleaved - precisely the split this scheme creates. Every laid-out file becomes a warning, and under `TreatWarningsAsErrors` a broken build. | `dotnet_diagnostic.SA1210.severity = none`. UA1000 takes over sorting entirely. |
+| `IDE0055` | Fires *only* when `dotnet_separate_import_directive_groups = true`, because that option wants blank lines by first-level namespace. Under `EnforceCodeStyleInBuild` it is a build warning, not merely the editor regrouping behind you. | `dotnet_separate_import_directive_groups = false`, which clears it with everything else held constant. |
+
+**A trap that is not this analyser's doing.** `SA1200` fires on every using under StyleCop's defaults,
+because it wants them *inside* the namespace. Declaring
+`csharp_using_directive_placement = outside_namespace` silences it - StyleCop honours that option.
+Either placement works here, so this only decides which shape you are enforcing, not whether the
+analyser applies.
+
+**Compatible, verified silent on the canonical layout:** `SA1208` (System first), `SA1209` (aliases
+last), `SA1211` (aliases alphabetical), `SA1216` and `SA1217` (`using static` placement and order),
+`SA1516` - including with `stylecop.layout.allowConsecutiveUsings = false` - and
+`dotnet_sort_system_directives_first = true`. `IDE0005` is orthogonal: it removes usings nothing
+needs, which is a separate question from where the rest go.
+
+Sorting is case-insensitive, deliberately matching what SA1210 accepts. Ordinal comparison would put
+`CSharp` above `CodeActions`, since `S` sits below `o` in character order, and this rule would then
+contradict the one it asks you to keep switched on everywhere else.
 
 ## What it deliberately leaves alone
 
