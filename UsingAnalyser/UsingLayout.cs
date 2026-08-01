@@ -272,7 +272,20 @@ public static class UsingLayout
 
             for (var index = 0; index < Math.Min(left.Length, right.Length); index++)
             {
-                var part = string.CompareOrdinal(left[index], right[index]);
+                // Case-insensitively first, because that is what "alphabetically" means to whoever
+                // reads the file, and what SA1210 means too. Ordinal on its own sorts CSharp above
+                // CodeActions - 'S' is below 'o' - so this rule would contradict the one it asks you
+                // to keep switched on.
+                var part = string.Compare(left[index], right[index], StringComparison.OrdinalIgnoreCase);
+                if (part != 0)
+                {
+                    return part;
+                }
+
+                // Ordinal only to break an exact tie. Two segments differing solely in case are a
+                // real, if unlikely, pair of namespaces, and they need some order rather than
+                // whichever the sort happened to see first.
+                part = string.CompareOrdinal(left[index], right[index]);
                 if (part != 0)
                 {
                     return part;

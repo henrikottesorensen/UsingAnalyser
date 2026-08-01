@@ -452,6 +452,48 @@ public class UsingLayoutAnalyzerTests
             """);
     }
 
+    [Fact]
+    public async Task SegmentsSortAlphabeticallyWhateverTheirCase()
+    {
+        // Ordinal on its own puts CSharp above CodeActions, because 'S' sorts below 'o'. SA1210 does
+        // not agree, and neither does anyone reading the file - so neither do we.
+        await VerifyAsync(
+            """
+            {|UA1000:using Gizmo.CSharp;|}
+            using Gizmo.CodeActions;
+            using Gizmo.CodeFixes;
+
+            internal class C;
+            """,
+            """
+            using Gizmo.CodeActions;
+            using Gizmo.CodeFixes;
+            using Gizmo.CSharp;
+
+            internal class C;
+            """);
+    }
+
+    [Fact]
+    public async Task SegmentsDifferingOnlyInCaseStillHaveAStableOrder()
+    {
+        // Nothing here is alphabetical any more, so ordinal breaks the tie and the answer is at least
+        // the same one every time.
+        await VerifyAsync(
+            """
+            {|UA1000:using Gizmo.Widget;|}
+            using Gizmo.WIDGET;
+
+            internal class C;
+            """,
+            """
+            using Gizmo.WIDGET;
+            using Gizmo.Widget;
+
+            internal class C;
+            """);
+    }
+
     /// <summary>
     /// Runs the analyser and, when <paramref name="fixedSource"/> differs, the code fix. Compiler
     /// diagnostics are off because these namespaces do not exist and do not need to: the analyser is
