@@ -36,6 +36,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    permissions:
+      # Trusted Publishing: the job proves who it is with a token GitHub signs at run time, and
+      # nuget.org hands back a key good for an hour. Nothing long-lived is stored anywhere.
+      # Without id-token the request fails quietly and the login step returns nothing useful.
+      id-token: write
+      # Naming any permission drops the rest to none, and checkout still needs to read the repo.
+      contents: read
+
     steps:
       - uses: actions/checkout@v4
 
@@ -52,11 +60,20 @@ jobs:
           --output artifacts
           -p:Version=${GITHUB_REF_NAME#v}
 
+      # Last thing before the push, deliberately: the key expires after an hour, and a token buys
+      # exactly one key, so asking early only shortens the window.
+      - name: Exchange the OIDC token for a short-lived key
+        uses: NuGet/login@v1
+        id: login
+        with:
+          # The nuget.org profile name, not the email address it signs in with.
+          user: ${{ secrets.NUGET_USER }}
+
       # --skip-duplicate so re-running a failed job is not itself an error. nuget.org keeps a version
       # forever; pushing the same one twice is a mistake worth ignoring rather than failing on.
       - name: Publish to nuget.org
         run: >
           dotnet nuget push artifacts/*.nupkg
           --source https://api.nuget.org/v3/index.json
-          --api-key "${{ secrets.NUGET_API_KEY }}"
+          --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
           --skip-duplicate
