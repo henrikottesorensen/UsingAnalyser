@@ -10,6 +10,7 @@ using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 
 namespace UsingAnalyser;
 
@@ -36,15 +37,17 @@ public sealed class UsingLayoutCodeFixProvider : CodeFixProvider
     {
         foreach (var diagnostic in context.Diagnostics)
         {
+            var span = diagnostic.Location.SourceSpan;
+
             context.RegisterCodeFix(
-                CodeAction.Create(Title, cancellationToken => FixAsync(context.Document, cancellationToken), equivalenceKey: Title),
+                CodeAction.Create(Title, cancellationToken => FixAsync(context.Document, span, cancellationToken), equivalenceKey: Title),
                 diagnostic);
         }
 
         return Task.CompletedTask;
     }
 
-    private static async Task<Document> FixAsync(Document document, CancellationToken cancellationToken)
+    private static async Task<Document> FixAsync(Document document, TextSpan span, CancellationToken cancellationToken)
     {
         if (await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false) is not CompilationUnitSyntax root)
         {
@@ -57,18 +60,25 @@ public sealed class UsingLayoutCodeFixProvider : CodeFixProvider
             return document;
         }
 
+        // The reported directive says which block to rewrite. A file can hold several - one per
+        // namespace, plus the file's own - and each is laid out independently of the others.
+        if (root.FindNode(span).FirstAncestorOrSelf<UsingDirectiveSyntax>()?.Parent is not { } container)
+        {
+            return document;
+        }
+
         var options = UsingLayoutOptions.Read(
             document.Project.AnalyzerOptions.AnalyzerConfigOptionsProvider.GetOptions(tree));
 
-        return document.WithSyntaxRoot(Rewrite(root, options));
+        return document.WithSyntaxRoot(root.ReplaceNode(container, Rewrite(container, options)));
     }
 
-    private static CompilationUnitSyntax Rewrite(CompilationUnitSyntax root, UsingLayoutOptions options)
+    private static SyntaxNode Rewrite(SyntaxNode container, UsingLayoutOptions options)
     {
-        var usings = UsingLayout.Relevant(root);
+        var usings = UsingLayout.Relevant(container);
         if (usings.Length < 2 || usings.Any(directive => directive.ContainsDirectives))
         {
-            return root;
+            return container;
         }
 
         var ordered = UsingLayout.Order(usings, options);
@@ -103,9 +113,9 @@ public sealed class UsingLayoutCodeFixProvider : CodeFixProvider
                 .WithTrailingTrivia(NormalizeTrailingTrivia(directive.GetTrailingTrivia(), newline)));
         }
 
-        var globals = root.Usings.Where(directive => !directive.GlobalKeyword.IsKind(SyntaxKind.None));
+        var globals = UsingLayout.Globals(container);
 
-        return root.WithUsings(SyntaxFactory.List(globals.Concat(rebuilt)));
+        return UsingLayout.WithUsings(container, SyntaxFactory.List(globals.Concat(rebuilt)));
     }
 
     /// <summary>

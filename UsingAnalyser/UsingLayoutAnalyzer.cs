@@ -64,7 +64,20 @@ public sealed class UsingLayoutAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        var usings = UsingLayout.Relevant(root);
+        var options = UsingLayoutOptions.Read(context.Options.AnalyzerConfigOptionsProvider.GetOptions(context.Tree));
+
+        // Usings written inside a namespace are a block in their own right - that is the placement
+        // StyleCop's SA1200 asks for by default, so it is the shape a stranger is most likely to
+        // arrive with.
+        foreach (var container in UsingLayout.Containers(root))
+        {
+            AnalyzeContainer(context, container, options);
+        }
+    }
+
+    private static void AnalyzeContainer(SyntaxTreeAnalysisContext context, SyntaxNode container, UsingLayoutOptions options)
+    {
+        var usings = UsingLayout.Relevant(container);
         if (usings.Length < 2)
         {
             return;
@@ -72,17 +85,17 @@ public sealed class UsingLayoutAnalyzer : DiagnosticAnalyzer
 
         // A #if around a using makes its position meaningful rather than cosmetic, and moving it
         // across the boundary would change which usings the compiler sees. Layout is not worth
-        // that, so a file that conditions its usings is left alone entirely.
+        // that, so a block that conditions its usings is left alone entirely.
         if (usings.Any(directive => directive.ContainsDirectives))
         {
             return;
         }
 
-        var options = UsingLayoutOptions.Read(context.Options.AnalyzerConfigOptionsProvider.GetOptions(context.Tree));
         var ordered = UsingLayout.Order(usings, options);
 
-        // At most one diagnostic per file. The fix rewrites the whole block in one edit, so a
-        // diagnostic per misplaced line would be N reports for one problem and N-1 no-op fixes.
+        // At most one diagnostic per block, because the fix rewrites the block in one edit. Per
+        // block rather than per file, so that a file with usings in two containers reports both and
+        // Fix All settles it in a single pass.
         for (var index = 0; index < usings.Length; index++)
         {
             if (usings[index] != ordered[index])

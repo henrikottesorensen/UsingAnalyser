@@ -336,6 +336,122 @@ public class UsingLayoutAnalyzerTests
             separateFirstParty: false);
     }
 
+    [Fact]
+    public async Task UsingsInsideANamespaceAreLaidOutToo()
+    {
+        // The placement SA1200 asks for by default. Before containers, this reported nothing at all.
+        await VerifyAsync(
+            """
+            namespace Sample
+            {
+                {|UA1000:using SolutionPrefix.Host;|}
+                using System;
+                using Gizmo.Widget;
+
+                internal class C;
+            }
+            """,
+            """
+            namespace Sample
+            {
+                using System;
+
+                using Gizmo.Widget;
+
+                using SolutionPrefix.Host;
+
+                internal class C;
+            }
+            """);
+    }
+
+    [Fact]
+    public async Task IndentationSurvivesTheRewrite()
+    {
+        await VerifyAsync(
+            """
+            namespace Outer
+            {
+                namespace Inner
+                {
+                    using System;
+                    {|UA1001:using Gizmo.Widget;|}
+
+                    internal class C;
+                }
+            }
+            """,
+            """
+            namespace Outer
+            {
+                namespace Inner
+                {
+                    using System;
+
+                    using Gizmo.Widget;
+
+                    internal class C;
+                }
+            }
+            """);
+    }
+
+    [Fact]
+    public async Task EachContainerIsItsOwnBlock()
+    {
+        // Two independent blocks in one file, so both report and Fix All settles them in one pass.
+        await VerifyAsync(
+            """
+            {|UA1000:using SolutionPrefix.Host;|}
+            using System;
+
+            namespace Sample
+            {
+                {|UA1000:using Gizmo.Widget;|}
+                using System.Text;
+
+                internal class C;
+            }
+            """,
+            """
+            using System;
+
+            using SolutionPrefix.Host;
+
+            namespace Sample
+            {
+                using System.Text;
+
+                using Gizmo.Widget;
+
+                internal class C;
+            }
+            """);
+    }
+
+    [Fact]
+    public async Task UsingsAfterAFileScopedNamespaceAreLaidOutToo()
+    {
+        await VerifyAsync(
+            """
+            namespace Sample;
+
+            {|UA1000:using SolutionPrefix.Host;|}
+            using System;
+
+            internal class C;
+            """,
+            """
+            namespace Sample;
+
+            using System;
+
+            using SolutionPrefix.Host;
+
+            internal class C;
+            """);
+    }
+
     /// <summary>
     /// Runs the analyser and, when <paramref name="fixedSource"/> differs, the code fix. Compiler
     /// diagnostics are off because these namespaces do not exist and do not need to: the analyser is

@@ -18,13 +18,78 @@ namespace UsingAnalyser;
 public static class UsingLayout
 {
     /// <summary>
-    /// The non-global using directives of a file, in source order. Global usings are excluded rather
-    /// than sorted: the compiler already requires them to come first, they are conventionally a
+    /// Every node in a file that can hold using directives: the file itself, then each namespace,
+    /// outermost first. A namespace's usings are its own block and are laid out independently of the
+    /// file's - they are in scope in different places, so running them together would be a claim about
+    /// the code rather than about its layout.
+    /// </summary>
+    public static IEnumerable<SyntaxNode> Containers(CompilationUnitSyntax root)
+    {
+        yield return root;
+
+        foreach (var namespaceDeclaration in Namespaces(root.Members))
+        {
+            yield return namespaceDeclaration;
+        }
+    }
+
+    /// <summary>
+    /// The non-global using directives of one container, in source order. Global usings are excluded
+    /// rather than sorted: the compiler already requires them to come first, they are conventionally a
     /// generated or single-purpose file of their own, and reordering them across that boundary would
     /// be a change in meaning rather than in layout.
     /// </summary>
-    public static ImmutableArray<UsingDirectiveSyntax> Relevant(CompilationUnitSyntax root) =>
-        root.Usings.Where(directive => directive.GlobalKeyword.IsKind(SyntaxKind.None)).ToImmutableArray();
+    public static ImmutableArray<UsingDirectiveSyntax> Relevant(SyntaxNode container) =>
+        Usings(container).Where(directive => directive.GlobalKeyword.IsKind(SyntaxKind.None)).ToImmutableArray();
+
+    /// <summary>The global usings of one container, which a rewrite has to put back untouched.</summary>
+    public static ImmutableArray<UsingDirectiveSyntax> Globals(SyntaxNode container) =>
+        Usings(container).Where(directive => !directive.GlobalKeyword.IsKind(SyntaxKind.None)).ToImmutableArray();
+
+    /// <summary>
+    /// One container with its using list replaced. <see cref="CompilationUnitSyntax"/> and
+    /// <see cref="BaseNamespaceDeclarationSyntax"/> both carry usings but share no base type that says
+    /// so, which is the only reason this is a switch rather than a call.
+    /// </summary>
+    public static SyntaxNode WithUsings(SyntaxNode container, SyntaxList<UsingDirectiveSyntax> usings) =>
+        container switch
+        {
+            CompilationUnitSyntax unit => unit.WithUsings(usings),
+            BaseNamespaceDeclarationSyntax namespaceDeclaration => namespaceDeclaration.WithUsings(usings),
+            _ => container,
+        };
+
+    private static SyntaxList<UsingDirectiveSyntax> Usings(SyntaxNode container) =>
+        container switch
+        {
+            CompilationUnitSyntax unit => unit.Usings,
+            BaseNamespaceDeclarationSyntax namespaceDeclaration => namespaceDeclaration.Usings,
+            _ => default,
+        };
+
+    /// <summary>
+    /// The namespaces declared in <paramref name="members"/>, and those nested inside them. Walking
+    /// members rather than every descendant matters: a namespace can only be declared at file level or
+    /// inside another namespace, so descending into method bodies would cost a full tree walk per file
+    /// to find nothing.
+    /// </summary>
+    private static IEnumerable<BaseNamespaceDeclarationSyntax> Namespaces(SyntaxList<MemberDeclarationSyntax> members)
+    {
+        foreach (var member in members)
+        {
+            if (member is not BaseNamespaceDeclarationSyntax namespaceDeclaration)
+            {
+                continue;
+            }
+
+            yield return namespaceDeclaration;
+
+            foreach (var nested in Namespaces(namespaceDeclaration.Members))
+            {
+                yield return nested;
+            }
+        }
+    }
 
     /// <summary>The canonical order for <paramref name="usings"/>, which is a stable sort of them.</summary>
     public static ImmutableArray<UsingDirectiveSyntax> Order(

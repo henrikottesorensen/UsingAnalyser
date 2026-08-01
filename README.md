@@ -16,6 +16,10 @@ using SolutionPrefix.Model;
 System first, then third party, then the solution's own namespaces. Three blocks, one blank line
 between them, each block sorted alphabetically.
 
+Every using block in a file is laid out independently: the file's own directives, and any written
+inside a namespace - the placement StyleCop's SA1200 asks for by default. Nested namespaces each get
+a block of their own, since usings in different scopes are in force in different places.
+
 ## Why this needs an analyser
 
 - `dotnet_separate_import_directive_groups` does insert blank lines, but a "group" is the first-level
@@ -106,8 +110,10 @@ Two settings have to give way first, or they will fight the new layout:
   a first-party root that sorts before a vendor - `Contoso` before `Microsoft`, say - is exactly
   what this scheme moves to the bottom. With SA1210 on, every fixed file becomes an SA1210 warning,
   and under `TreatWarningsAsErrors` that is a broken build. UA1000 takes over sorting entirely.
-- **`dotnet_separate_import_directive_groups` should go to `false`,** or the editor's sort-usings
-  action will regroup by first-level namespace behind you.
+- **`dotnet_separate_import_directive_groups` must go to `false`.** Not just because the editor's
+  sort-usings action regroups behind you: with it on, IDE0055 reports the canonical layout as a
+  formatting error, so under `EnforceCodeStyleInBuild` it is a build warning. Flipping that one key
+  clears it, everything else held constant.
 
 SA1208, SA1209, SA1211, SA1216 and SA1217 can stay: the layout puts System first, and keeps
 `using static` and aliases as trailing blocks in the order those rules want.
