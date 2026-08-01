@@ -31,7 +31,7 @@ public sealed class UsingGroupAnalyzer : DiagnosticAnalyzer
         category: "Ordering",
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: $"Set {UsingLayout.FirstPartyPrefixesKey} in .editorconfig to the namespace roots that belong to this solution.");
+        description: $"Set {UsingLayoutOptions.FirstPartyPrefixesKey} in .editorconfig to the namespace roots that belong to this solution.");
 
     private static readonly DiagnosticDescriptor SeparationRule = new(
         SeparationDiagnosticId,
@@ -40,7 +40,7 @@ public sealed class UsingGroupAnalyzer : DiagnosticAnalyzer
         category: "Ordering",
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: $"Set {UsingLayout.FirstPartyPrefixesKey} in .editorconfig to the namespace roots that belong to this solution.");
+        description: $"Set {UsingLayoutOptions.FirstPartyPrefixesKey} in .editorconfig to the namespace roots that belong to this solution.");
 
     /// <inheritdoc/>
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
@@ -78,8 +78,8 @@ public sealed class UsingGroupAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        var prefixes = UsingLayout.ReadFirstPartyPrefixes(context.Options.AnalyzerConfigOptionsProvider.GetOptions(context.Tree));
-        var ordered = UsingLayout.Order(usings, prefixes);
+        var options = UsingLayoutOptions.Read(context.Options.AnalyzerConfigOptionsProvider.GetOptions(context.Tree));
+        var ordered = UsingLayout.Order(usings, options);
 
         // At most one diagnostic per file. The fix rewrites the whole block in one edit, so a
         // diagnostic per misplaced line would be N reports for one problem and N-1 no-op fixes.
@@ -94,7 +94,7 @@ public sealed class UsingGroupAnalyzer : DiagnosticAnalyzer
 
         for (var index = 1; index < usings.Length; index++)
         {
-            var wanted = UsingLayout.NeedsSeparation(usings[index - 1], usings[index], prefixes);
+            var wanted = UsingLayout.NeedsSeparation(usings[index - 1], usings[index], options);
             if (wanted != UsingLayout.HasSeparation(usings[index - 1], usings[index]))
             {
                 context.ReportDiagnostic(Diagnostic.Create(SeparationRule, usings[index].GetLocation(), Describe(usings[index])));

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 using Microsoft.CodeAnalysis.CSharp.Testing;
@@ -214,16 +215,158 @@ public class UsingGroupAnalyzerTests
             """);
     }
 
+    [Fact]
+    public async Task WithSeparateSystemOffSystemRunsIntoThirdParty()
+    {
+        await VerifyAsync(
+            """
+            using System;
+
+            {|UA1001:using Gizmo.Widget;|}
+
+            using SolutionPrefix.Host;
+
+            internal class C;
+            """,
+            """
+            using System;
+            using Gizmo.Widget;
+
+            using SolutionPrefix.Host;
+
+            internal class C;
+            """,
+            separateSystem: false);
+    }
+
+    [Fact]
+    public async Task WithSeparateFirstPartyOffFirstPartyRunsIntoThirdParty()
+    {
+        await VerifyAsync(
+            """
+            using System;
+
+            using Gizmo.Widget;
+
+            {|UA1001:using SolutionPrefix.Host;|}
+
+            internal class C;
+            """,
+            """
+            using System;
+
+            using Gizmo.Widget;
+            using SolutionPrefix.Host;
+
+            internal class C;
+            """,
+            separateFirstParty: false);
+    }
+
+    [Fact]
+    public async Task WithBothOffOrderIsStillEnforcedAsOneRun()
+    {
+        // The point of splitting ordering from separation: turning the blank lines off does not turn
+        // the scheme off, it just stops it being visible.
+        await VerifyAsync(
+            """
+            {|UA1000:using SolutionPrefix.Host;|}
+            using System;
+            using Gizmo.Widget;
+
+            internal class C;
+            """,
+            """
+            using System;
+            using Gizmo.Widget;
+            using SolutionPrefix.Host;
+
+            internal class C;
+            """,
+            separateSystem: false,
+            separateFirstParty: false);
+    }
+
+    [Fact]
+    public async Task ABoundaryThatSkipsThirdPartyIsSeparatedIfEitherToggleAsksForIt()
+    {
+        // No third-party usings at all, so the one boundary in the file crosses both toggles. Only
+        // separate_first_party is on, and that is enough.
+        await VerifyAsync(
+            """
+            using System;
+
+            using SolutionPrefix.Host;
+
+            internal class C;
+            """,
+            separateSystem: false);
+    }
+
+    [Fact]
+    public async Task ABoundaryThatSkipsThirdPartyRunsTogetherWhenNeitherToggleAsksForIt()
+    {
+        await VerifyAsync(
+            """
+            using System;
+            using SolutionPrefix.Host;
+
+            internal class C;
+            """,
+            separateSystem: false,
+            separateFirstParty: false);
+    }
+
+    [Fact]
+    public async Task StaticAndAliasBlocksStaySeparatedWhateverTheTogglesSay()
+    {
+        // They are not part of the toggled scheme: they are there to keep SA1216 and SA1209 happy.
+        await VerifyAsync(
+            """
+            using System;
+            using SolutionPrefix.Host;
+
+            using static System.Math;
+
+            using Zed = System.Text.StringBuilder;
+
+            internal class C;
+            """,
+            separateSystem: false,
+            separateFirstParty: false);
+    }
+
     /// <summary>
     /// Runs the analyser and, when <paramref name="fixedSource"/> differs, the code fix. Compiler
     /// diagnostics are off because these namespaces do not exist and do not need to: the analyser is
-    /// a syntax tree action and never asks what a name binds to.
+    /// a syntax tree action and never asks what a name binds to. Each setting is written only when
+    /// the case names it, so unset really is unset rather than a default written out longhand.
     /// </summary>
-    private static async Task VerifyAsync(string source, string? fixedSource = null, string? prefixes = "SolutionPrefix")
+    private static async Task VerifyAsync(
+        string source,
+        string? fixedSource = null,
+        string? prefixes = "SolutionPrefix",
+        bool? separateSystem = null,
+        bool? separateFirstParty = null)
     {
-        var editorConfig = prefixes is null
-            ? "root = true\n[*.cs]\n"
-            : $"root = true\n[*.cs]\n{UsingLayout.FirstPartyPrefixesKey} = {prefixes}\n";
+        var settings = new List<string> { "root = true", "[*.cs]" };
+
+        if (prefixes is not null)
+        {
+            settings.Add($"{UsingLayoutOptions.FirstPartyPrefixesKey} = {prefixes}");
+        }
+
+        if (separateSystem is not null)
+        {
+            settings.Add($"{UsingLayoutOptions.SeparateSystemKey} = {(separateSystem.Value ? "true" : "false")}");
+        }
+
+        if (separateFirstParty is not null)
+        {
+            settings.Add($"{UsingLayoutOptions.SeparateFirstPartyKey} = {(separateFirstParty.Value ? "true" : "false")}");
+        }
+
+        var editorConfig = string.Join("\n", settings) + "\n";
 
         var test = new CSharpCodeFixTest<UsingGroupAnalyzer, UsingGroupCodeFixProvider, DefaultVerifier>
         {

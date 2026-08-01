@@ -57,13 +57,13 @@ public sealed class UsingGroupCodeFixProvider : CodeFixProvider
             return document;
         }
 
-        var prefixes = UsingLayout.ReadFirstPartyPrefixes(
+        var options = UsingLayoutOptions.Read(
             document.Project.AnalyzerOptions.AnalyzerConfigOptionsProvider.GetOptions(tree));
 
-        return document.WithSyntaxRoot(Rewrite(root, prefixes));
+        return document.WithSyntaxRoot(Rewrite(root, options));
     }
 
-    private static CompilationUnitSyntax Rewrite(CompilationUnitSyntax root, ImmutableArray<string> prefixes)
+    private static CompilationUnitSyntax Rewrite(CompilationUnitSyntax root, UsingLayoutOptions options)
     {
         var usings = UsingLayout.Relevant(root);
         if (usings.Length < 2 || usings.Any(directive => directive.ContainsDirectives))
@@ -71,7 +71,7 @@ public sealed class UsingGroupCodeFixProvider : CodeFixProvider
             return root;
         }
 
-        var ordered = UsingLayout.Order(usings, prefixes);
+        var ordered = UsingLayout.Order(usings, options);
         var newline = DetectLineEnding(usings);
 
         // Whatever sits above the first directive and ends in a blank line is a file header, not that
@@ -93,7 +93,7 @@ public sealed class UsingGroupCodeFixProvider : CodeFixProvider
             {
                 leading = header.AddRange(leading);
             }
-            else if (UsingLayout.NeedsSeparation(ordered[index - 1], directive, prefixes))
+            else if (UsingLayout.NeedsSeparation(ordered[index - 1], directive, options))
             {
                 leading = leading.Insert(0, newline);
             }

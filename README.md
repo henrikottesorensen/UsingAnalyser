@@ -30,19 +30,42 @@ Neither of the `dotnet_*` options is a diagnostic. They configure the editor's s
 
 ## Configuration
 
-One key, in `.editorconfig`:
+Three keys, in `.editorconfig`. All of them carry the `usinglayout.` prefix, so nothing here can
+collide with a built-in option, a StyleCop setting, or another analyser's.
 
 ```ini
 [*.cs]
-using_first_party_prefixes = SolutionPrefix
+usinglayout.first_party_prefixes = SolutionPrefix
+usinglayout.separate_system = true
+usinglayout.separate_first_party = true
 ```
 
-Comma-separated for a solution spanning several roots (`Contoso.Platform, Contoso.Internal`).
-Matching is ordinal, because namespaces are case sensitive, and a root only matches at a dot
-boundary, so `System` never swallows `SystemsManager`.
-
-Leaving it unset is a legitimate configuration rather than an error: the scheme collapses to
+`first_party_prefixes` is comma-separated for a solution spanning several roots
+(`Contoso.Platform, Contoso.Internal`). Matching is ordinal, because namespaces are case sensitive,
+and a root only matches at a dot boundary, so `System` never swallows `SystemsManager`. Leaving it
+unset is a legitimate configuration rather than an error: the scheme collapses to
 System-then-everything-else.
+
+The two `separate_*` keys default to `true` and control the blank lines independently:
+
+| separate_system | separate_first_party | Result                                              |
+|-----------------|----------------------|-----------------------------------------------------|
+| `true`          | `true`               | Three blocks (the default).                          |
+| `false`         | `true`               | System runs into third party; first party set apart. |
+| `true`          | `false`              | System set apart; third party runs into first party. |
+| `false`         | `false`              | One run, still ordered.                              |
+
+Turning both off does not turn the scheme off - it stops the scheme being *visible*. UA1000 still
+sorts System, then third party, then first party; there is just nothing between the blocks.
+
+Two things the toggles do not reach. A file with no third-party usings has one boundary that crosses
+both toggles at once, and it takes a blank line if *either* toggle asks for one, so a block you asked
+to set apart stays set apart regardless of what else the file happens to import. And the trailing
+`using static` and alias blocks are always separated: they exist to keep SA1216 and SA1209 satisfied,
+and running them into the block above would undo that.
+
+An unparseable value falls back to the default rather than reporting. A typo in a layout setting
+should not be the thing that fails a build.
 
 ## Rules
 

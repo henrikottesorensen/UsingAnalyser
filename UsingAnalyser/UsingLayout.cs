@@ -18,32 +18,6 @@ namespace UsingAnalyser;
 public static class UsingLayout
 {
     /// <summary>
-    /// The .editorconfig key naming the namespace roots that count as first party, comma separated.
-    /// Deliberately not prefixed with a product name - a repository sets it to its own solution
-    /// prefix, which is the only thing that varies between consumers.
-    /// </summary>
-    public const string FirstPartyPrefixesKey = "using_first_party_prefixes";
-
-    /// <summary>
-    /// Reads the configured first-party roots for one file. Unset is a legitimate configuration and
-    /// not a diagnostic: it collapses the scheme to System-then-everything-else, which is still a
-    /// stricter layout than the language gives you for free.
-    /// </summary>
-    public static ImmutableArray<string> ReadFirstPartyPrefixes(AnalyzerConfigOptions options)
-    {
-        if (!options.TryGetValue(FirstPartyPrefixesKey, out var raw) || string.IsNullOrWhiteSpace(raw))
-        {
-            return ImmutableArray<string>.Empty;
-        }
-
-        return raw
-            .Split(',')
-            .Select(prefix => prefix.Trim())
-            .Where(prefix => prefix.Length > 0)
-            .ToImmutableArray();
-    }
-
-    /// <summary>
     /// The non-global using directives of a file, in source order. Global usings are excluded rather
     /// than sorted: the compiler already requires them to come first, they are conventionally a
     /// generated or single-purpose file of their own, and reordering them across that boundary would
@@ -55,24 +29,31 @@ public static class UsingLayout
     /// <summary>The canonical order for <paramref name="usings"/>, which is a stable sort of them.</summary>
     public static ImmutableArray<UsingDirectiveSyntax> Order(
         ImmutableArray<UsingDirectiveSyntax> usings,
-        ImmutableArray<string> firstPartyPrefixes) =>
+        UsingLayoutOptions options) =>
         usings
-            .OrderBy(directive => Key(directive, firstPartyPrefixes), UsingKeyComparer.Instance)
+            .OrderBy(directive => Key(directive, options), UsingKeyComparer.Instance)
             .ToImmutableArray();
 
     /// <summary>
-    /// Whether a blank line belongs between two adjacent directives, which is exactly when they fall
-    /// in different blocks.
+    /// Whether a blank line belongs between two adjacent directives. Ordering is not configurable and
+    /// separation is, so two directives can sit in different blocks and still run together.
     /// </summary>
     public static bool NeedsSeparation(
         UsingDirectiveSyntax first,
         UsingDirectiveSyntax second,
-        ImmutableArray<string> firstPartyPrefixes)
+        UsingLayoutOptions options)
     {
-        var left = Key(first, firstPartyPrefixes);
-        var right = Key(second, firstPartyPrefixes);
+        var left = Key(first, options);
+        var right = Key(second, options);
 
-        return left.Kind != right.Kind || left.Group != right.Group;
+        // The trailing static and alias blocks are not part of the toggled scheme: they exist to keep
+        // SA1216 and SA1209 satisfied, and running them into the block above would undo that.
+        if (left.Kind != right.Kind)
+        {
+            return true;
+        }
+
+        return options.Separates(left.Group, right.Group);
     }
 
     /// <summary>
@@ -102,7 +83,7 @@ public static class UsingLayout
     }
 
     /// <summary>The sort key: which block a directive lands in, and where it sits inside that block.</summary>
-    private static UsingKey Key(UsingDirectiveSyntax directive, ImmutableArray<string> firstPartyPrefixes)
+    private static UsingKey Key(UsingDirectiveSyntax directive, UsingLayoutOptions options)
     {
         if (directive.Alias is not null)
         {
@@ -118,7 +99,7 @@ public static class UsingLayout
             return new UsingKey(UsingKind.Static, UsingGroup.System, name);
         }
 
-        return new UsingKey(UsingKind.Regular, Classify(name, firstPartyPrefixes), name);
+        return new UsingKey(UsingKind.Regular, Classify(name, options.FirstPartyPrefixes), name);
     }
 
     /// <summary>
