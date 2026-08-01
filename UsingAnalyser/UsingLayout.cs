@@ -1,0 +1,268 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Text;
+
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Diagnostics;
+
+namespace UsingAnalyser;
+
+/// <summary>
+/// The one description of the canonical layout, shared by the analyser and the code fix so they
+/// cannot drift: whatever <see cref="Order"/> produces is exactly what the analyser demands.
+/// </summary>
+public static class UsingLayout
+{
+    /// <summary>
+    /// The .editorconfig key naming the namespace roots that count as first party, comma separated.
+    /// Deliberately not prefixed with a product name - a repository sets it to its own solution
+    /// prefix, which is the only thing that varies between consumers.
+    /// </summary>
+    public const string FirstPartyPrefixesKey = "using_first_party_prefixes";
+
+    /// <summary>
+    /// Reads the configured first-party roots for one file. Unset is a legitimate configuration and
+    /// not a diagnostic: it collapses the scheme to System-then-everything-else, which is still a
+    /// stricter layout than the language gives you for free.
+    /// </summary>
+    public static ImmutableArray<string> ReadFirstPartyPrefixes(AnalyzerConfigOptions options)
+    {
+        if (!options.TryGetValue(FirstPartyPrefixesKey, out var raw) || string.IsNullOrWhiteSpace(raw))
+        {
+            return ImmutableArray<string>.Empty;
+        }
+
+        return raw
+            .Split(',')
+            .Select(prefix => prefix.Trim())
+            .Where(prefix => prefix.Length > 0)
+            .ToImmutableArray();
+    }
+
+    /// <summary>
+    /// The non-global using directives of a file, in source order. Global usings are excluded rather
+    /// than sorted: the compiler already requires them to come first, they are conventionally a
+    /// generated or single-purpose file of their own, and reordering them across that boundary would
+    /// be a change in meaning rather than in layout.
+    /// </summary>
+    public static ImmutableArray<UsingDirectiveSyntax> Relevant(CompilationUnitSyntax root) =>
+        root.Usings.Where(directive => directive.GlobalKeyword.IsKind(SyntaxKind.None)).ToImmutableArray();
+
+    /// <summary>The canonical order for <paramref name="usings"/>, which is a stable sort of them.</summary>
+    public static ImmutableArray<UsingDirectiveSyntax> Order(
+        ImmutableArray<UsingDirectiveSyntax> usings,
+        ImmutableArray<string> firstPartyPrefixes) =>
+        usings
+            .OrderBy(directive => Key(directive, firstPartyPrefixes), UsingKeyComparer.Instance)
+            .ToImmutableArray();
+
+    /// <summary>
+    /// Whether a blank line belongs between two adjacent directives, which is exactly when they fall
+    /// in different blocks.
+    /// </summary>
+    public static bool NeedsSeparation(
+        UsingDirectiveSyntax first,
+        UsingDirectiveSyntax second,
+        ImmutableArray<string> firstPartyPrefixes)
+    {
+        var left = Key(first, firstPartyPrefixes);
+        var right = Key(second, firstPartyPrefixes);
+
+        return left.Kind != right.Kind || left.Group != right.Group;
+    }
+
+    /// <summary>
+    /// Whether a blank line currently sits between two adjacent directives. The newline that ends
+    /// the first directive is one of the two we are counting, so a blank line means two or more.
+    /// Counting stops at a comment because a comment introduces the directive below it, so blank
+    /// lines above the comment are the separation and blank lines below it are the comment's own
+    /// spacing - only the former is ours to judge.
+    /// </summary>
+    public static bool HasSeparation(UsingDirectiveSyntax first, UsingDirectiveSyntax second)
+    {
+        var newlines = first.GetTrailingTrivia().Count(trivia => trivia.IsKind(SyntaxKind.EndOfLineTrivia));
+
+        foreach (var trivia in second.GetLeadingTrivia())
+        {
+            if (trivia.IsKind(SyntaxKind.EndOfLineTrivia))
+            {
+                newlines++;
+            }
+            else if (!trivia.IsKind(SyntaxKind.WhitespaceTrivia))
+            {
+                break;
+            }
+        }
+
+        return newlines >= 2;
+    }
+
+    /// <summary>The sort key: which block a directive lands in, and where it sits inside that block.</summary>
+    private static UsingKey Key(UsingDirectiveSyntax directive, ImmutableArray<string> firstPartyPrefixes)
+    {
+        if (directive.Alias is not null)
+        {
+            // SA1211 orders aliases by the alias, not by what it points at, and an alias pointing at a
+            // tuple or an array has no namespace to order by in the first place.
+            return new UsingKey(UsingKind.Alias, UsingGroup.System, Flatten(directive.Alias.Name));
+        }
+
+        var name = Flatten(directive.NamespaceOrType);
+
+        if (!directive.StaticKeyword.IsKind(SyntaxKind.None))
+        {
+            return new UsingKey(UsingKind.Static, UsingGroup.System, name);
+        }
+
+        return new UsingKey(UsingKind.Regular, Classify(name, firstPartyPrefixes), name);
+    }
+
+    /// <summary>
+    /// Which block a namespace belongs to. Ordinal throughout, because namespaces are case sensitive
+    /// and a prefix that matches only under a loose comparison would be silently wrong rather than
+    /// helpfully lenient.
+    /// </summary>
+    private static UsingGroup Classify(string name, ImmutableArray<string> firstPartyPrefixes)
+    {
+        if (IsUnder(name, "System"))
+        {
+            return UsingGroup.System;
+        }
+
+        foreach (var prefix in firstPartyPrefixes)
+        {
+            if (IsUnder(name, prefix))
+            {
+                return UsingGroup.FirstParty;
+            }
+        }
+
+        return UsingGroup.ThirdParty;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="name"/> is <paramref name="root"/> or sits beneath it. The explicit dot
+    /// check is what stops a "System" root from swallowing "SystemsManager".
+    /// </summary>
+    private static bool IsUnder(string name, string root) =>
+        string.Equals(name, root, StringComparison.Ordinal)
+        || (name.Length > root.Length
+            && name[root.Length] == '.'
+            && name.StartsWith(root, StringComparison.Ordinal));
+
+    /// <summary>
+    /// A syntax node's text with every space removed, so that <c>using Foo . Bar;</c> sorts as
+    /// <c>Foo.Bar</c> rather than as its own oddity.
+    /// </summary>
+    private static string Flatten(SyntaxNode? node)
+    {
+        if (node is null)
+        {
+            return string.Empty;
+        }
+
+        var text = node.ToString();
+        if (!text.Any(char.IsWhiteSpace))
+        {
+            return text;
+        }
+
+        var flattened = new StringBuilder(text.Length);
+        foreach (var character in text.Where(character => !char.IsWhiteSpace(character)))
+        {
+            flattened.Append(character);
+        }
+
+        return flattened.ToString();
+    }
+
+    /// <summary>Where a directive sorts: its block, and its place within it.</summary>
+    private readonly struct UsingKey
+    {
+        public UsingKey(UsingKind kind, UsingGroup group, string name)
+        {
+            Kind = kind;
+            Group = group;
+            Name = name;
+        }
+
+        public UsingKind Kind { get; }
+
+        public UsingGroup Group { get; }
+
+        public string Name { get; }
+    }
+
+    /// <summary>
+    /// Orders by block, then by name a dotted part at a time. Comparing whole strings would sort
+    /// <c>Foo.Bar</c> after <c>FooBar</c> in some places and before it in others, because the dot
+    /// sorts below letters but above digits; comparing part by part just asks the question the
+    /// reader is asking.
+    /// </summary>
+    private sealed class UsingKeyComparer : IComparer<UsingKey>
+    {
+        public static readonly UsingKeyComparer Instance = new();
+
+        public int Compare(UsingKey x, UsingKey y)
+        {
+            var kind = x.Kind.CompareTo(y.Kind);
+            if (kind != 0)
+            {
+                return kind;
+            }
+
+            var group = x.Group.CompareTo(y.Group);
+            if (group != 0)
+            {
+                return group;
+            }
+
+            var left = x.Name.Split('.');
+            var right = y.Name.Split('.');
+
+            for (var index = 0; index < Math.Min(left.Length, right.Length); index++)
+            {
+                var part = string.CompareOrdinal(left[index], right[index]);
+                if (part != 0)
+                {
+                    return part;
+                }
+            }
+
+            return left.Length.CompareTo(right.Length);
+        }
+    }
+}
+
+/// <summary>
+/// The top-level partition, which exists to stay out of StyleCop's way: SA1216 wants every
+/// <c>using static</c> after every plain using, and SA1209 wants every alias after those.
+/// </summary>
+public enum UsingKind
+{
+    /// <summary>A plain <c>using Some.Namespace;</c>, the only kind that gets grouped.</summary>
+    Regular,
+
+    /// <summary>A <c>using static</c>, which trails every plain using as one block of its own.</summary>
+    Static,
+
+    /// <summary>An alias, which trails everything else as one block of its own.</summary>
+    Alias,
+}
+
+/// <summary>The three blank-line-separated blocks, in the order they appear in a file.</summary>
+public enum UsingGroup
+{
+    /// <summary><c>System</c> and everything beneath it.</summary>
+    System,
+
+    /// <summary>Anything that is neither System nor a configured first-party root.</summary>
+    ThirdParty,
+
+    /// <summary>A namespace beneath one of the roots named by <c>using_first_party_prefixes</c>.</summary>
+    FirstParty,
+}

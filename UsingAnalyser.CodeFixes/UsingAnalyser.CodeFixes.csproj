@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>false</ImplicitUsings>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+        <!-- The package, because this is the assembly that references the other one. The id cannot be
+             "UsingAnalyser": that is a project name in this solution, and NuGet refuses to resolve a
+             reference when a package id and a project name collide. -->
+        <PackageId>UsingGroupAnalyser</PackageId>
+        <Version>0.1.0</Version>
+        <Description>Groups using directives as System, third party, then first party, and keeps each block sorted.</Description>
+        <IsPackable>true</IsPackable>
+        <DevelopmentDependency>true</DevelopmentDependency>
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+        <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+        <NoPackageAnalysis>true</NoPackageAnalysis>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- The reason this assembly is separate from the analyser: a CodeFixProvider needs
+             Workspaces, the compiler never loads Workspaces, and an analyser assembly that drags it
+             in is the RS1038 case that fails to load during a command-line build. -->
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" PrivateAssets="all" />
+        <ProjectReference Include="..\UsingAnalyser\UsingAnalyser.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Both halves ship in the one package, in the one folder Roslyn looks in. -->
+        <None Include="$(OutputPath)UsingAnalyser.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+        <None Include="$(OutputPath)UsingAnalyser.CodeFixes.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    </ItemGroup>
+
+</Project>

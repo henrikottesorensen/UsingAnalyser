@@ -1,0 +1,109 @@
+using System.Collections.Immutable;
+using System.Linq;
+
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Diagnostics;
+
+namespace UsingAnalyser;
+
+/// <summary>
+/// Enforces a using layout that neither the built-in options nor StyleCop can express: System, then
+/// third party, then the solution's own namespaces, as three alphabetical blocks separated by a
+/// blank line. <c>dotnet_separate_import_directive_groups</c> gets close but groups by first-level
+/// namespace, which splits third party into one block per vendor and cannot tell a vendor from you;
+/// StyleCop's SA1208/SA1210 know only "System first, then alphabetical" and have no notion of a
+/// blank-line block at all.
+/// </summary>
+[DiagnosticAnalyzer(LanguageNames.CSharp)]
+public sealed class UsingGroupAnalyzer : DiagnosticAnalyzer
+{
+    /// <summary>The directives are in the wrong order.</summary>
+    public const string OrderDiagnosticId = "UA1000";
+
+    /// <summary>The directives are in the right order but the blank lines between them are not.</summary>
+    public const string SeparationDiagnosticId = "UA1001";
+
+    private static readonly DiagnosticDescriptor OrderRule = new(
+        OrderDiagnosticId,
+        title: "Using directives are out of order",
+        messageFormat: "'{0}' is out of order: using directives run System, then third party, then first party, each block sorted alphabetically",
+        category: "Ordering",
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: $"Set {UsingLayout.FirstPartyPrefixesKey} in .editorconfig to the namespace roots that belong to this solution.");
+
+    private static readonly DiagnosticDescriptor SeparationRule = new(
+        SeparationDiagnosticId,
+        title: "Using blocks are not separated by a blank line",
+        messageFormat: "Blank-line separation is wrong at '{0}': one blank line goes between using blocks, and nowhere else",
+        category: "Ordering",
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: $"Set {UsingLayout.FirstPartyPrefixesKey} in .editorconfig to the namespace roots that belong to this solution.");
+
+    /// <inheritdoc/>
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
+        ImmutableArray.Create(OrderRule, SeparationRule);
+
+    /// <inheritdoc/>
+    public override void Initialize(AnalysisContext context)
+    {
+        context.EnableConcurrentExecution();
+        context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
+
+        // A syntax tree action, not a semantic one: classification is a question about the text of a
+        // namespace, so the analyser never needs a compilation and never waits for one.
+        context.RegisterSyntaxTreeAction(Analyze);
+    }
+
+    private static void Analyze(SyntaxTreeAnalysisContext context)
+    {
+        if (context.Tree.GetRoot(context.CancellationToken) is not CompilationUnitSyntax root)
+        {
+            return;
+        }
+
+        var usings = UsingLayout.Relevant(root);
+        if (usings.Length < 2)
+        {
+            return;
+        }
+
+        // A #if around a using makes its position meaningful rather than cosmetic, and moving it
+        // across the boundary would change which usings the compiler sees. Layout is not worth
+        // that, so a file that conditions its usings is left alone entirely.
+        if (usings.Any(directive => directive.ContainsDirectives))
+        {
+            return;
+        }
+
+        var prefixes = UsingLayout.ReadFirstPartyPrefixes(context.Options.AnalyzerConfigOptionsProvider.GetOptions(context.Tree));
+        var ordered = UsingLayout.Order(usings, prefixes);
+
+        // At most one diagnostic per file. The fix rewrites the whole block in one edit, so a
+        // diagnostic per misplaced line would be N reports for one problem and N-1 no-op fixes.
+        for (var index = 0; index < usings.Length; index++)
+        {
+            if (usings[index] != ordered[index])
+            {
+                context.ReportDiagnostic(Diagnostic.Create(OrderRule, usings[index].GetLocation(), Describe(usings[index])));
+                return;
+            }
+        }
+
+        for (var index = 1; index < usings.Length; index++)
+        {
+            var wanted = UsingLayout.NeedsSeparation(usings[index - 1], usings[index], prefixes);
+            if (wanted != UsingLayout.HasSeparation(usings[index - 1], usings[index]))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(SeparationRule, usings[index].GetLocation(), Describe(usings[index])));
+                return;
+            }
+        }
+    }
+
+    /// <summary>What to call a directive in a message: what the reader sees after <c>using</c>.</summary>
+    private static string Describe(UsingDirectiveSyntax directive) =>
+        directive.Alias?.Name.ToString() ?? directive.NamespaceOrType?.ToString() ?? directive.ToString();
+}
