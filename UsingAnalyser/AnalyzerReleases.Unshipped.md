@@ -5,5 +5,5 @@
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------------------------------------------------------------------
-UA1000  | Ordering | Warning  | UsingGroupAnalyzer, using directives are out of order
-UA1001  | Ordering | Warning  | UsingGroupAnalyzer, using blocks are not separated by a blank line
+UA1000  | Ordering | Warning  | UsingLayoutAnalyzer, using directives are out of order
+UA1001  | Ordering | Warning  | UsingLayoutAnalyzer, using blocks are not separated by a blank line

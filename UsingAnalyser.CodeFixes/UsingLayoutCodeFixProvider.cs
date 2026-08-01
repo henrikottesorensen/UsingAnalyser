@@ -18,15 +18,15 @@ namespace UsingAnalyser;
 /// adoptable: turning it on in an existing repository is otherwise a few hundred files of hand
 /// editing, which nobody does.
 /// </summary>
-[ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(UsingGroupCodeFixProvider))]
+[ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(UsingLayoutCodeFixProvider))]
 [Shared]
-public sealed class UsingGroupCodeFixProvider : CodeFixProvider
+public sealed class UsingLayoutCodeFixProvider : CodeFixProvider
 {
     private const string Title = "Group and sort using directives";
 
     /// <inheritdoc/>
     public override ImmutableArray<string> FixableDiagnosticIds { get; } =
-        ImmutableArray.Create(UsingGroupAnalyzer.OrderDiagnosticId, UsingGroupAnalyzer.SeparationDiagnosticId);
+        ImmutableArray.Create(UsingLayoutAnalyzer.OrderDiagnosticId, UsingLayoutAnalyzer.SeparationDiagnosticId);
 
     /// <inheritdoc/>
     public override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;

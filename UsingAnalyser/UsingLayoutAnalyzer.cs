@@ -16,7 +16,7 @@ namespace UsingAnalyser;
 /// blank-line block at all.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class UsingGroupAnalyzer : DiagnosticAnalyzer
+public sealed class UsingLayoutAnalyzer : DiagnosticAnalyzer
 {
     /// <summary>The directives are in the wrong order.</summary>
     public const string OrderDiagnosticId = "UA1000";

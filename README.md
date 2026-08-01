@@ -89,7 +89,7 @@ As a project reference, which is the quickest way to try it:
                   OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 ```
 
-Or as a package, `dotnet pack UsingAnalyser.CodeFixes` (package id `UsingGroupAnalyser`), which puts
+Or as a package, `dotnet pack UsingAnalyser.CodeFixes` (package id `UsingLayoutAnalyser`), which puts
 both assemblies where Roslyn looks for them.
 
 ## Turning it on in an existing repository

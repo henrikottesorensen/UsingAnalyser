@@ -13,7 +13,7 @@ namespace UsingAnalyser.Test;
 /// states its fixed form, so the harness proves the fix converges - it re-runs the analyser on the
 /// output and fails if anything is still reported.
 /// </summary>
-public class UsingGroupAnalyzerTests
+public class UsingLayoutAnalyzerTests
 {
     [Fact]
     public async Task CanonicalLayoutIsAccepted()
@@ -368,7 +368,7 @@ public class UsingGroupAnalyzerTests
 
         var editorConfig = string.Join("\n", settings) + "\n";
 
-        var test = new CSharpCodeFixTest<UsingGroupAnalyzer, UsingGroupCodeFixProvider, DefaultVerifier>
+        var test = new CSharpCodeFixTest<UsingLayoutAnalyzer, UsingLayoutCodeFixProvider, DefaultVerifier>
         {
             TestCode = source,
             FixedCode = fixedSource ?? source,

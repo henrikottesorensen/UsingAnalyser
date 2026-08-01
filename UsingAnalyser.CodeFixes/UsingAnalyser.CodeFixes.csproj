@@ -11,7 +11,7 @@
         <!-- The package, because this is the assembly that references the other one. The id cannot be
              "UsingAnalyser": that is a project name in this solution, and NuGet refuses to resolve a
              reference when a package id and a project name collide. -->
-        <PackageId>UsingGroupAnalyser</PackageId>
+        <PackageId>UsingLayoutAnalyser</PackageId>
         <Version>0.1.0</Version>
         <Description>Groups using directives as System, third party, then first party, and keeps each block sorted.</Description>
         <IsPackable>true</IsPackable>
