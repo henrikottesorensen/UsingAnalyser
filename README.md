@@ -34,7 +34,7 @@ Neither of the `dotnet_*` options is a diagnostic. They configure the editor's s
 
 ## Configuration
 
-Three keys, in `.editorconfig`. All of them carry the `usinglayout.` prefix, so nothing here can
+Four keys, in `.editorconfig`. All of them carry the `usinglayout.` prefix, so nothing here can
 collide with a built-in option, a StyleCop setting, or another analyser's.
 
 ```ini
@@ -51,7 +51,8 @@ and a root only matches at a dot boundary, so `System` never swallows `SystemsMa
 unset is a legitimate configuration rather than an error: the scheme collapses to
 System-then-everything-else.
 
-The two `separate_*` keys default to `true` and control the blank lines independently:
+`separate_system` and `separate_first_party` decide the boundaries between blocks. Both default to
+`true`, and they work independently:
 
 | separate_system | separate_first_party | Result                                              |
 |-----------------|----------------------|-----------------------------------------------------|
