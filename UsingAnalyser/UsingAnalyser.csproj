@@ -19,9 +19,17 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <!-- 4.14 rather than 5.0: an analyser runs on the host's Roslyn, so it must be built against
-             the oldest one it should load into, not the newest one on this machine. -->
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
+        <!--
+            The oldest Roslyn this should load into, not the newest on this machine. An analyser that
+            references a newer compiler than the one running it is not loaded at all: the compiler
+            says CS9057, which is a warning, and then carries on without the rules. Built against
+            4.14 this was silently absent on the .NET 8 SDK, whose Roslyn is 4.11 - green build, no
+            diagnostics, nothing to notice.
+
+            4.8 covers every SDK from .NET 8 onwards. Nothing here needs anything later; the newest
+            API in use is UsingDirectiveSyntax.NamespaceOrType, from 4.7.
+        -->
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
         <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
     </ItemGroup>
 

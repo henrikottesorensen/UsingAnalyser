@@ -12,7 +12,7 @@
              "UsingAnalyser": that is a project name in this solution, and NuGet refuses to resolve a
              reference when a package id and a project name collide. -->
         <PackageId>UsingLayoutAnalyser</PackageId>
-        <Version>0.1.0</Version>
+        <Version>0.2.1</Version>
         <Description>Groups using directives as System, third party, then first party, and keeps each block sorted.</Description>
         <Authors>Henrik O. Sørensen</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -31,7 +31,7 @@
         <!-- The reason this assembly is separate from the analyser: a CodeFixProvider needs
              Workspaces, the compiler never loads Workspaces, and an analyser assembly that drags it
              in is the RS1038 case that fails to load during a command-line build. -->
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.8.0" PrivateAssets="all" />
         <!-- OutputItemType so the analyser also runs over this project. Its own using block is the
              one that caught the ordinal-sorting bug, which nothing here would have noticed. -->
         <ProjectReference Include="..\UsingAnalyser\UsingAnalyser.csproj" OutputItemType="Analyzer" />
