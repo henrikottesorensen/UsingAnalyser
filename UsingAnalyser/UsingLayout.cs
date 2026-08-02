@@ -118,7 +118,32 @@ public static class UsingLayout
             return true;
         }
 
-        return options.Separates(left.Group, right.Group);
+        // A boundary between blocks belongs to the block toggles, and only to them. Root separation
+        // never overrules them, so asking for roots to be split does not quietly re-separate a block
+        // boundary you had switched off.
+        if (left.Group != right.Group)
+        {
+            return options.Separates(left.Group, right.Group);
+        }
+
+        // Inside one block, roots. Regular usings only: an alias sorts under its alias, which rarely
+        // has a dot in it, so every alias would become a root of its own and every one of them would
+        // get a blank line above it.
+        return options.SeparateRoots
+            && left.Kind == UsingKind.Regular
+            && !string.Equals(Root(left.Name), Root(right.Name), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A namespace's first segment, which is what "Microsoft things together, Evilcorp things
+    /// together" means. Ordering never has to change for this: the sort is alphabetical by segment,
+    /// so a root's namespaces are already contiguous.
+    /// </summary>
+    private static string Root(string name)
+    {
+        var dot = name.IndexOf('.');
+
+        return dot < 0 ? name : name.Substring(0, dot);
     }
 
     /// <summary>

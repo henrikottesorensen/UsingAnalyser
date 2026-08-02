@@ -494,6 +494,108 @@ public class UsingLayoutAnalyzerTests
             """);
     }
 
+    [Fact]
+    public async Task RootsRunTogetherUnlessAskedToSeparate()
+    {
+        // The default, and what every 0.1.0 consumer already has on disk.
+        await VerifyAsync("""
+            using System;
+
+            using Evilcorp.Thingamabob;
+            using Microsoft.Extensions.Options;
+            using Microsoft.Extensions.Primitives;
+
+            internal class C;
+            """);
+    }
+
+    [Fact]
+    public async Task WithSeparateRootsOnEachRootIsItsOwnRun()
+    {
+        await VerifyAsync(
+            """
+            using System;
+
+            using Evilcorp.Thingamabob;
+            {|UA1001:using Microsoft.Extensions.Options;|}
+            using Microsoft.Extensions.Primitives;
+
+            internal class C;
+            """,
+            """
+            using System;
+
+            using Evilcorp.Thingamabob;
+
+            using Microsoft.Extensions.Options;
+            using Microsoft.Extensions.Primitives;
+
+            internal class C;
+            """,
+            separateRoots: true);
+    }
+
+    [Fact]
+    public async Task SeparateRootsSplitsTheFirstPartyBlockToo()
+    {
+        // Two configured roots, so the block has two of them and the toggle applies there as well.
+        await VerifyAsync(
+            """
+            using System;
+
+            using Contoso.Internal.Bits;
+            {|UA1001:using SolutionPrefix.Host;|}
+
+            internal class C;
+            """,
+            """
+            using System;
+
+            using Contoso.Internal.Bits;
+
+            using SolutionPrefix.Host;
+
+            internal class C;
+            """,
+            prefixes: "SolutionPrefix, Contoso",
+            separateRoots: true);
+    }
+
+    [Fact]
+    public async Task SeparateRootsDoesNotReopenABlockBoundaryYouClosed()
+    {
+        // separate_system is off, so System runs into third party even though their roots differ.
+        // A block boundary is the block toggles' business, and this one does not overrule them.
+        await VerifyAsync(
+            """
+            using System;
+            using Evilcorp.Thingamabob;
+
+            using Microsoft.Extensions.Options;
+
+            internal class C;
+            """,
+            separateSystem: false,
+            separateRoots: true);
+    }
+
+    [Fact]
+    public async Task SeparateRootsLeavesAliasesAlone()
+    {
+        // An alias sorts under its alias, which has no dots, so treating each as a root would put a
+        // blank line above every one of them.
+        await VerifyAsync(
+            """
+            using System;
+
+            using Alpha = System.Text.StringBuilder;
+            using Zed = System.Collections.ArrayList;
+
+            internal class C;
+            """,
+            separateRoots: true);
+    }
+
     /// <summary>
     /// Runs the analyser and, when <paramref name="fixedSource"/> differs, the code fix. Compiler
     /// diagnostics are off because these namespaces do not exist and do not need to: the analyser is
@@ -505,7 +607,8 @@ public class UsingLayoutAnalyzerTests
         string? fixedSource = null,
         string? prefixes = "SolutionPrefix",
         bool? separateSystem = null,
-        bool? separateFirstParty = null)
+        bool? separateFirstParty = null,
+        bool? separateRoots = null)
     {
         var settings = new List<string> { "root = true", "[*.cs]" };
 
@@ -522,6 +625,11 @@ public class UsingLayoutAnalyzerTests
         if (separateFirstParty is not null)
         {
             settings.Add($"{UsingLayoutOptions.SeparateFirstPartyKey} = {(separateFirstParty.Value ? "true" : "false")}");
+        }
+
+        if (separateRoots is not null)
+        {
+            settings.Add($"{UsingLayoutOptions.SeparateRootsKey} = {(separateRoots.Value ? "true" : "false")}");
         }
 
         var editorConfig = string.Join("\n", settings) + "\n";

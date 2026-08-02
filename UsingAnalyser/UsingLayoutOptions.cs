@@ -20,16 +20,27 @@ public sealed class UsingLayoutOptions
     /// <summary>Whether a blank line goes between third party and first party.</summary>
     public const string SeparateFirstPartyKey = "usinglayout.separate_first_party";
 
-    private UsingLayoutOptions(ImmutableArray<string> firstPartyPrefixes, bool separateSystem, bool separateFirstParty)
+    /// <summary>Whether a blank line goes between namespace roots inside a block.</summary>
+    public const string SeparateRootsKey = "usinglayout.separate_roots";
+
+    private UsingLayoutOptions(
+        ImmutableArray<string> firstPartyPrefixes,
+        bool separateSystem,
+        bool separateFirstParty,
+        bool separateRoots)
     {
         FirstPartyPrefixes = firstPartyPrefixes;
         SeparateSystem = separateSystem;
         SeparateFirstParty = separateFirstParty;
+        SeparateRoots = separateRoots;
     }
 
     /// <summary>What every consumer gets before configuring anything: the full three-block scheme.</summary>
-    public static UsingLayoutOptions Default { get; } =
-        new(ImmutableArray<string>.Empty, separateSystem: true, separateFirstParty: true);
+    public static UsingLayoutOptions Default { get; } = new(
+        ImmutableArray<string>.Empty,
+        separateSystem: true,
+        separateFirstParty: true,
+        separateRoots: false);
 
     /// <summary>
     /// The roots naming first-party namespaces. Empty is a legitimate configuration rather than an
@@ -44,12 +55,21 @@ public sealed class UsingLayoutOptions
     /// <summary>Whether the first-party block stands apart from what precedes it.</summary>
     public bool SeparateFirstParty { get; }
 
+    /// <summary>
+    /// Whether a blank line goes between namespace roots inside a block, so that <c>Microsoft.*</c>
+    /// stands apart from <c>Evilcorp.*</c> rather than running into it. Off unless asked for: turning
+    /// it on relays every file that has more than one vendor in a block, and that is not something to
+    /// do to somebody on a patch upgrade.
+    /// </summary>
+    public bool SeparateRoots { get; }
+
     /// <summary>Reads the options that apply to one file.</summary>
     public static UsingLayoutOptions Read(AnalyzerConfigOptions options) =>
         new(
             ReadPrefixes(options),
             ReadFlag(options, SeparateSystemKey),
-            ReadFlag(options, SeparateFirstPartyKey));
+            ReadFlag(options, SeparateFirstPartyKey),
+            ReadFlag(options, SeparateRootsKey, or: false));
 
     /// <summary>
     /// Whether a blank line belongs at the boundary between two blocks. Crossing both boundaries at
@@ -86,9 +106,9 @@ public sealed class UsingLayoutOptions
     }
 
     /// <summary>
-    /// A flag, defaulting to on. Anything unparseable defaults the same way rather than reporting:
-    /// a typo in a layout setting should not be the thing that fails a build.
+    /// A flag. Anything unparseable falls back to <paramref name="or"/> rather than reporting: a typo
+    /// in a layout setting should not be the thing that fails a build.
     /// </summary>
-    private static bool ReadFlag(AnalyzerConfigOptions options, string key) =>
-        !options.TryGetValue(key, out var raw) || !bool.TryParse(raw.Trim(), out var value) || value;
+    private static bool ReadFlag(AnalyzerConfigOptions options, string key, bool or = true) =>
+        options.TryGetValue(key, out var raw) && bool.TryParse(raw.Trim(), out var value) ? value : or;
 }

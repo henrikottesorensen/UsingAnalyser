@@ -42,6 +42,7 @@ collide with a built-in option, a StyleCop setting, or another analyser's.
 usinglayout.first_party_prefixes = SolutionPrefix
 usinglayout.separate_system = true
 usinglayout.separate_first_party = true
+usinglayout.separate_roots = false
 ```
 
 `first_party_prefixes` is comma-separated for a solution spanning several roots
@@ -61,6 +62,31 @@ The two `separate_*` keys default to `true` and control the blank lines independ
 
 Turning both off does not turn the scheme off - it stops the scheme being *visible*. UA1000 still
 sorts System, then third party, then first party; there is just nothing between the blocks.
+
+`separate_roots` is the fourth, and it works one level down: inside a block, it puts a blank line
+wherever the first namespace segment changes, so vendors stand apart from each other.
+
+```csharp
+using Evilcorp.Thingamabob;
+
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Primitives;
+
+using NSubstitute;
+```
+
+It defaults to `false`, unlike the other three. Turning it on relayouts every file with more than one
+vendor in a block, and that is not a thing to do to somebody who upgraded a patch version.
+
+It never overrules the block toggles. A boundary *between* blocks is theirs alone, so switching
+`separate_system` off keeps System running into third party even though their roots differ - asking
+for roots to be split does not quietly reopen a boundary you closed. Aliases are left alone too: an
+alias sorts under its alias, which rarely contains a dot, so every alias would otherwise become a
+root of its own and collect a blank line.
+
+Ordering never changes for any of this. The sort is alphabetical segment by segment, so a root's
+namespaces are already contiguous - `separate_roots` only decides whether a blank line falls between
+them.
 
 Two things the toggles do not reach. A file with no third-party usings has one boundary that crosses
 both toggles at once, and it takes a blank line if *either* toggle asks for one, so a block you asked
