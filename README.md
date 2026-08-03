@@ -79,11 +79,29 @@ using NSubstitute;
 It defaults to `false`, unlike the other three. Turning it on relayouts every file with more than one
 vendor in a block, and that is not a thing to do to somebody who upgraded a patch version.
 
+It applies to every block, not only third party. The System block never splits in practice, because
+`System`, `System.Text` and `System.Threading.Tasks` all have the same first segment - only the
+*root* changes a block, not the segments under it. The first-party block does split when
+`first_party_prefixes` names roots that differ:
+
+```ini
+usinglayout.first_party_prefixes = Contoso, Fabrikam
+```
+
+```csharp
+using Contoso.Thing;
+
+using Fabrikam.Other;
+```
+
 It never overrules the block toggles. A boundary *between* blocks is theirs alone, so switching
 `separate_system` off keeps System running into third party even though their roots differ - asking
-for roots to be split does not quietly reopen a boundary you closed. Aliases are left alone too: an
-alias sorts under its alias, which rarely contains a dot, so every alias would otherwise become a
-root of its own and collect a blank line.
+for roots to be split does not quietly reopen a boundary you closed.
+
+The trailing `using static` and alias blocks are exempt, and stay exempt: splitting them is reported
+as an error rather than merely not required. They exist to keep SA1216 and SA1209 satisfied, and an
+alias sorts under its alias, which rarely contains a dot - so every alias would otherwise become a
+root of its own and collect a blank line above it.
 
 Ordering never changes for any of this. The sort is alphabetical segment by segment, so a root's
 namespaces are already contiguous - `separate_roots` only decides whether a blank line falls between
