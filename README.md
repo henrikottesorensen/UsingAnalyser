@@ -45,11 +45,22 @@ usinglayout.separate_first_party = true
 usinglayout.separate_roots = false
 ```
 
-`first_party_prefixes` is comma-separated for a solution spanning several roots
-(`Contoso.Platform, Contoso.Internal`). Matching is ordinal, because namespaces are case sensitive,
-and a root only matches at a dot boundary, so `System` never swallows `SystemsManager`. Leaving it
-unset is a legitimate configuration rather than an error: the scheme collapses to
-System-then-everything-else.
+**`first_party_prefixes` is optional.** Left unset, each file is judged against the namespace it
+declares: a file in `Contoso.Billing` has already said that `Contoso` is its own code, and there is
+no reason to make you repeat it. Usings written inside a namespace are judged against that namespace.
+
+Set it when inference is not enough, and it always wins when set:
+
+- **A solution spanning several roots.** `Contoso.Platform, Fabrikam` - one file cannot know about
+  the others, so a file in `Contoso` would otherwise treat `Fabrikam` as a vendor.
+- **Files that deliberately declare someone else's namespace.** An extension method placed in
+  `Microsoft.Extensions.DependencyInjection` for discoverability would otherwise make every
+  `Microsoft.*` first party.
+- **Files with no namespace at all**, such as top-level statements. Nothing to infer from, so
+  everything that is not System is a vendor.
+
+Matching is ordinal, because namespaces are case sensitive, and a root only matches at a dot
+boundary, so `System` never swallows `SystemsManager`.
 
 `separate_system` and `separate_first_party` decide the boundaries between blocks. Both default to
 `true`, and they work independently:

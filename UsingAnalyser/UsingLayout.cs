@@ -42,6 +42,36 @@ public static class UsingLayout
     public static ImmutableArray<UsingDirectiveSyntax> Relevant(SyntaxNode container) =>
         Usings(container).Where(directive => directive.GlobalKeyword.IsKind(SyntaxKind.None)).ToImmutableArray();
 
+    /// <summary>
+    /// The namespace root a container declares, or null when it declares none. This is what stands in
+    /// for <c>first_party_prefixes</c> when nothing is configured: a file in <c>Contoso.Billing</c>
+    /// is telling you, without being asked, that <c>Contoso</c> is its own code.
+    /// </summary>
+    public static string? DeclaredRoot(SyntaxNode container)
+    {
+        var declared = container switch
+        {
+            // Usings written inside a namespace get this for free: the container is the namespace.
+            BaseNamespaceDeclarationSyntax namespaceDeclaration => namespaceDeclaration.Name,
+
+            // Otherwise the file's own namespace, which is the first one declared in it. A file
+            // holding several says nothing clear about whose code it is, and the first is as good an
+            // answer as any - it is also the one a reader would give.
+            CompilationUnitSyntax unit => unit.Members.OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault()?.Name,
+
+            _ => null,
+        };
+
+        if (declared is null)
+        {
+            return null;
+        }
+
+        var root = Root(Flatten(declared));
+
+        return root.Length == 0 ? null : root;
+    }
+
     /// <summary>The global usings of one container, which a rewrite has to put back untouched.</summary>
     public static ImmutableArray<UsingDirectiveSyntax> Globals(SyntaxNode container) =>
         Usings(container).Where(directive => !directive.GlobalKeyword.IsKind(SyntaxKind.None)).ToImmutableArray();

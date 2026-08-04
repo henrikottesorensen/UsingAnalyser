@@ -70,7 +70,10 @@ public sealed class UsingLayoutCodeFixProvider : CodeFixProvider
         var options = UsingLayoutOptions.Read(
             document.Project.AnalyzerOptions.AnalyzerConfigOptionsProvider.GetOptions(tree));
 
-        return document.WithSyntaxRoot(root.ReplaceNode(container, Rewrite(container, options)));
+        // The same inference the analyser makes, or the fix would lay the block out differently from
+        // the way the diagnostic described it.
+        return document.WithSyntaxRoot(
+            root.ReplaceNode(container, Rewrite(container, options.WithInferredFirstParty(UsingLayout.DeclaredRoot(container)))));
     }
 
     private static SyntaxNode Rewrite(SyntaxNode container, UsingLayoutOptions options)

@@ -75,8 +75,13 @@ public sealed class UsingLayoutAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private static void AnalyzeContainer(SyntaxTreeAnalysisContext context, SyntaxNode container, UsingLayoutOptions options)
+    private static void AnalyzeContainer(SyntaxTreeAnalysisContext context, SyntaxNode container, UsingLayoutOptions fileOptions)
     {
+        // With no prefixes configured, the container's own namespace says which code is the
+        // solution's. Per container rather than per file, so usings inside a namespace are judged
+        // against that namespace.
+        var options = fileOptions.WithInferredFirstParty(UsingLayout.DeclaredRoot(container));
+
         var usings = UsingLayout.Relevant(container);
         if (usings.Length < 2)
         {

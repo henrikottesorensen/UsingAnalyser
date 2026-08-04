@@ -12,7 +12,7 @@
              "UsingAnalyser": that is a project name in this solution, and NuGet refuses to resolve a
              reference when a package id and a project name collide. -->
         <PackageId>UsingLayoutAnalyser</PackageId>
-        <Version>0.2.1</Version>
+        <Version>0.3.0</Version>
         <Description>Groups using directives as System, third party, then first party, and keeps each block sorted.</Description>
         <Authors>Henrik O. Sørensen</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>

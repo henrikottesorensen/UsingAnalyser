@@ -63,6 +63,32 @@ public sealed class UsingLayoutOptions
     /// </summary>
     public bool SeparateRoots { get; }
 
+    /// <summary>
+    /// These options with <paramref name="root"/> standing in as the first-party prefix, when none was
+    /// configured. Configuration always wins - a solution spanning several roots has to say so, and
+    /// cannot be inferred from one file at a time.
+    /// </summary>
+    /// <remarks>
+    /// Inferring is the default because the alternative default was silently wrong. With nothing
+    /// configured and nothing inferred, every namespace that is not System is third party, so a
+    /// solution's own code sorts among its vendors - a worse layout, arrived at by forgetting a
+    /// setting, and reported by nothing. A file that declares a namespace has already said which code
+    /// is its own; there is no reason to make someone repeat it in .editorconfig.
+    /// </remarks>
+    public UsingLayoutOptions WithInferredFirstParty(string? root)
+    {
+        if (!FirstPartyPrefixes.IsEmpty || string.IsNullOrEmpty(root))
+        {
+            return this;
+        }
+
+        return new UsingLayoutOptions(
+            ImmutableArray.Create(root!),
+            SeparateSystem,
+            SeparateFirstParty,
+            SeparateRoots);
+    }
+
     /// <summary>Reads the options that apply to one file.</summary>
     public static UsingLayoutOptions Read(AnalyzerConfigOptions options) =>
         new(

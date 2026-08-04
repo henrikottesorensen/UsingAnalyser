@@ -596,6 +596,100 @@ public class UsingLayoutAnalyzerTests
             separateRoots: true);
     }
 
+    [Fact]
+    public async Task WithNothingConfiguredTheFileSaysWhatIsFirstParty()
+    {
+        // No first_party_prefixes anywhere. The namespace the file declares is the answer.
+        await VerifyAsync(
+            """
+            {|UA1000:using SolutionPrefix.Model;|}
+            using System;
+            using Gizmo.Widget;
+
+            namespace SolutionPrefix.Host;
+
+            internal class C;
+            """,
+            """
+            using System;
+
+            using Gizmo.Widget;
+
+            using SolutionPrefix.Model;
+
+            namespace SolutionPrefix.Host;
+
+            internal class C;
+            """,
+            prefixes: null);
+    }
+
+    [Fact]
+    public async Task ConfigurationBeatsWhatTheFileDeclares()
+    {
+        // The file is Contoso, the configuration says SolutionPrefix. A solution spanning several
+        // roots has to be able to say so, and one file cannot know about the others.
+        await VerifyAsync(
+            """
+            using System;
+
+            using Contoso.Vendor;
+
+            using SolutionPrefix.Model;
+
+            namespace Contoso.App;
+
+            internal class C;
+            """,
+            prefixes: "SolutionPrefix");
+    }
+
+    [Fact]
+    public async Task UsingsInsideANamespaceInferFromThatNamespace()
+    {
+        await VerifyAsync(
+            """
+            namespace SolutionPrefix.Host
+            {
+                {|UA1000:using SolutionPrefix.Model;|}
+                using System;
+                using Gizmo.Widget;
+
+                internal class C;
+            }
+            """,
+            """
+            namespace SolutionPrefix.Host
+            {
+                using System;
+
+                using Gizmo.Widget;
+
+                using SolutionPrefix.Model;
+
+                internal class C;
+            }
+            """,
+            prefixes: null);
+    }
+
+    [Fact]
+    public async Task AFileDeclaringNoNamespaceHasNothingToInferFrom()
+    {
+        // Top-level statements and the like. Everything that is not System is third party, which is
+        // the behaviour that used to apply everywhere when nothing was configured.
+        await VerifyAsync(
+            """
+            using System;
+
+            using Gizmo.Widget;
+            using SolutionPrefix.Model;
+
+            internal class C;
+            """,
+            prefixes: null);
+    }
+
     /// <summary>
     /// Runs the analyser and, when <paramref name="fixedSource"/> differs, the code fix. Compiler
     /// diagnostics are off because these namespaces do not exist and do not need to: the analyser is
