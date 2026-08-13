@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <!-- Tags are "v0.4.0", not "0.4.0" - MinVer's default prefix is empty, so without this it would
+         find no tag at all and every build would start again from 0.0.0-alpha.0. Here rather than in
+         the csproj because it describes the repository's tags rather than one project's packaging,
+         and because Nota.CodeAnalysis states it the same way. -->
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+  </PropertyGroup>
+</Project>

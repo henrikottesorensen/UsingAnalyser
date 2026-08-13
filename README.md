@@ -309,6 +309,22 @@ contradict the one it asks you to keep switched on everywhere else.
 - **The file's line endings**, taken from the file rather than assumed, so a fix never turns into a
   whole-file diff on the other platform.
 
+## Releasing
+
+Tag it. The workflow publishes to nuget.org on any `v*` tag, behind a green suite:
+
+```sh
+git tag -a v0.4.1 -m "UsingLayoutAnalyser 0.4.1" && git push origin v0.4.1
+```
+
+MinVer reads the version out of the tag, so there is no `<Version>` in the csproj to fall out of step
+with one - and no `-p:Version` in the workflow either, which is why the CI checkout fetches full
+history rather than the default shallow clone. Without the tags MinVer does not fail; it publishes
+`0.0.0-alpha.0`, and nuget.org keeps a version forever.
+
+Build off a tag and you get the next patch as a prerelease, `0.4.1-alpha.0.2` and so on, so a local
+pack never claims to be a release.
+
 ## Licence
 
 MIT. See [LICENSE](LICENSE).

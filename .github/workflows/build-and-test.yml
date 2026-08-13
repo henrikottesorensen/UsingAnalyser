@@ -16,7 +16,12 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      # fetch-depth: 0 because MinVer versions the package from the git tag, and the default shallow
+      # clone carries neither the tags nor the history to count from. It does not fail without them -
+      # it quietly produces 0.0.0-alpha.0 - so the suite builds the same assemblies CI will pack.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v6
         with:
@@ -45,20 +50,24 @@ jobs:
       contents: read
 
     steps:
+      # The one that matters: without the tags, MinVer finds nothing and this job publishes
+      # 0.0.0-alpha.0 to nuget.org, green, where a version cannot be taken back.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
-      # The tag is the version. Nothing in the repository can then disagree with what shipped, which
-      # is the failure mode of a version number kept in a csproj and remembered by hand.
+      # The tag is still the version, but MinVer reads it out of the checkout rather than this step
+      # picking it off the ref name. No -p:Version: MinVer computes into Version during the build and
+      # would overwrite it anyway, so passing one here would look authoritative and do nothing.
       - name: Pack
         run: >
           dotnet pack UsingAnalyser.CodeFixes/UsingAnalyser.CodeFixes.csproj
           --configuration Release
           --output artifacts
-          -p:Version=${GITHUB_REF_NAME#v}
 
       # Last thing before the push, deliberately: the key expires after an hour, and a token buys
       # exactly one key, so asking early only shortens the window.
