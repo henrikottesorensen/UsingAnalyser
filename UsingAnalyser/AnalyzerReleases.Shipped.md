@@ -9,3 +9,11 @@ Rule ID | Category | Severity | Notes
 --------|----------|----------|-------------------------------------------------------------------
 UA1000  | Ordering | Warning  | UsingLayoutAnalyzer, using directives are out of order
 UA1001  | Ordering | Warning  | UsingLayoutAnalyzer, using blocks are not separated by a blank line
+
+## Release 0.4.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------------------------------------------------------------------
+UA1002  | Ordering | Warning  | UsingLayoutAnalyzer, a configured setting will fight this using layout

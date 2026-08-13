@@ -152,6 +152,12 @@ switching the thing off and does exactly what `= true` does. The third is checke
 compilation's severity map rather than read as a key, since the compiler takes
 `dotnet_diagnostic.*.severity` out of the configuration before an analyser ever sees it.
 
+It arrived in 0.4.0, and a minor version rather than a patch is deliberate: it reports on
+configuration that was already there, so a repository with `TreatWarningsAsErrors` and one of those
+keys goes from building to not building on upgrade. That is the rule working - the build was already
+broken in the sense that mattered, and only `dotnet format` knew - but it is not a thing to hand
+somebody in a patch.
+
 **Silence from UA1002 is not a clean bill of health**, and the gap is worth knowing. If SA1210 is left
 unset, what happens is StyleCop's own default, and no analyser can read another package's defaults -
 so unset is *unknown* here rather than safe. Below `warning` it stays quiet on purpose: `dotnet

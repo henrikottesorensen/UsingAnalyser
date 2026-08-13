@@ -12,7 +12,11 @@
              "UsingAnalyser": that is a project name in this solution, and NuGet refuses to resolve a
              reference when a package id and a project name collide. -->
         <PackageId>UsingLayoutAnalyser</PackageId>
-        <Version>0.3.0</Version>
+        <!-- Minor rather than patch: UA1002 is a new rule, on by default, and it reports on
+             configuration that was there before the upgrade. A repository with TreatWarningsAsErrors
+             and one of those keys goes from building to not building, which is the point of the rule
+             and still not a thing to do to somebody taking a patch. -->
+        <Version>0.4.0</Version>
         <Description>Groups using directives as System, third party, then first party, and keeps each block sorted.</Description>
         <Authors>Henrik O. Sørensen</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
