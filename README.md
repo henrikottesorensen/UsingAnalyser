@@ -187,29 +187,72 @@ satisfy it.
 
 ## Which other rules this touches
 
-Measured rather than reasoned about, against StyleCop.Analyzers 1.2.0.556 with every `Style` category
-rule at warning, on a canonical file including statics and aliases. Measured against `dotnet format`
-as well as against the build: a rule can be silent as a diagnostic and still be enforced by a
-formatting stage that reports no diagnostic at all.
+Measured rather than reasoned about, against StyleCop.Analyzers 1.2.0.556 on a canonical file
+including statics and aliases, with `dotnet_analyzer_diagnostic.severity = warning` - every StyleCop,
+CA and IDE rule at once, rather than one category. With the three below settled, that file reports
+nothing at all.
+
+Measured against `dotnet format` as well as against the build, because the two do not agree. A rule
+can be silent as a diagnostic and still be enforced by a formatting stage that reports nothing, and a
+rule that reports only a warning at build can rewrite your files on every `dotnet format` run. Both
+happened here, and neither was visible from a build log.
 
 **Conflicts. These three must be settled, or the layout will not build clean.**
 
 | Rule | What happens | Settle it with |
 |------|--------------|----------------|
-| `SA1210` | Sorts the whole list alphabetically, so it wants third party and first party interleaved - precisely the split this scheme creates. Every laid-out file becomes a warning, and under `TreatWarningsAsErrors` a broken build. | `dotnet_diagnostic.SA1210.severity = none`. UA1000 takes over sorting entirely. |
+| `SA1210` | Sorts the whole list alphabetically, so it wants third party and first party interleaved - precisely the split this scheme creates. Every laid-out file becomes a warning, and under `TreatWarningsAsErrors` a broken build. Worse under `dotnet format`: SA1210 has a fixer too, so the two rewrite the block in turn and the file **oscillates**, changing on every run forever. | `dotnet_diagnostic.SA1210.severity = none`. UA1000 takes over sorting entirely. |
 | `IDE0055` | Fires *only* when `dotnet_separate_import_directive_groups = true`, because that option wants blank lines by first-level namespace. Under `EnforceCodeStyleInBuild` it is a build warning, not merely the editor regrouping behind you. | Remove the key. Setting it to `false` silences IDE0055 but arms `IMPORTS` below, which is worse. |
 | `IMPORTS` | Not a rule but a stage of `dotnet format style`, armed by the mere presence of `dotnet_sort_system_directives_first` or `dotnet_separate_import_directive_groups` at any value. It sorts flat-alphabetically after System, contradicting the first-party block, and no severity setting reaches it. `dotnet format` then makes no change while `--verify-no-changes` exits 2 permanently. | Remove both keys. They configure a sorter that UA1000 has replaced, so there is nothing left for them to do. |
+
+The two are one problem wearing different hats, and it is worth stating as a rule: **anything that
+rewrites the using block will fight this one.** Not anything that disagrees about order - a rule with
+an opinion and no fixer only warns, and you can switch it off or live with it. A *fixer* is what
+turns disagreement into motion. `IMPORTS` is a formatter and `SA1210` is an analyser fixer, and they
+were found by two different accidents rather than by looking, because neither is visible in a build
+log: one reports nothing, and the other reports something far milder than what it does.
+
+The shapes differ in how they fail, and the second is the one that costs you:
+
+```
+SA1210 = warning, three consecutive dotnet format runs
+
+  run 1 -> md5 95946a80c174365c31e180916cbb7029
+  run 2 -> md5 aeb36bcea02ebeffb2a5de3076ca4687
+  run 3 -> md5 95946a80c174365c31e180916cbb7029
+```
+
+```diff
+  using System;
+  using System.Collections.Generic;
+-
+- using Evilcorp.Widgets;
+-
+  using Contoso.Billing.Model;
++ using Evilcorp.Widgets;
+```
+
+`IMPORTS` leaves a correct file on disk that `--verify-no-changes` refuses to pass, which is
+maddening but at least stable. `SA1210` produces a genuine diff every single time anyone runs
+`dotnet format`, which means spurious commits and merge conflicts between people who ran it at
+different moments.
 
 **A trap that is not this analyser's doing.** `SA1200` fires on every using under StyleCop's defaults,
 because it wants them *inside* the namespace. Declaring
 `csharp_using_directive_placement = outside_namespace` silences it - StyleCop honours that option.
 Either placement works here, so this only decides which shape you are enforcing, not whether the
-analyser applies.
+analyser applies. `inside_namespace` was checked under `dotnet format` too, since `IDE0065` has a
+fixer and moves the directives: it moves them, UA1000 lays them out in their new scope, and the two
+settle rather than take turns.
 
 **Compatible, verified silent on the canonical layout:** `SA1208` (System first), `SA1209` (aliases
 last), `SA1211` (aliases alphabetical), `SA1216` and `SA1217` (`using static` placement and order),
 and `SA1516` - including with `stylecop.layout.allowConsecutiveUsings = false`. `IDE0005` is
 orthogonal: it removes usings nothing needs, which is a separate question from where the rest go.
+
+Silent is the weaker claim, so these were run through `dotnet format` as well - every rule at warning
+with only `SA1210` switched off. Several of them have fixers, and none of those fixers disturbs the
+layout: the file is byte-identical after three consecutive runs and `--verify-no-changes` exits 0.
 
 `dotnet_sort_system_directives_first = true` used to be listed here, and as a diagnostic it is indeed
 silent - UA1000 already sorts System first, so there is nothing for it to report. That was measured
