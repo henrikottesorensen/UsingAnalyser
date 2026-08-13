@@ -160,25 +160,45 @@ both assemblies where Roslyn looks for them.
 dotnet format analyzers YourSolution.slnx --diagnostics UA1000 UA1001 --severity warn
 ```
 
-Three settings, and the canonical layout then builds clean:
+Two settings, and the canonical layout then builds clean:
 
 ```ini
 csharp_using_directive_placement = outside_namespace:error
-dotnet_separate_import_directive_groups = false
 dotnet_diagnostic.SA1210.severity = none
 ```
+
+And two settings that must be **absent**, not set to anything:
+
+```ini
+dotnet_sort_system_directives_first
+dotnet_separate_import_directive_groups
+```
+
+`dotnet format style` runs an organize-imports pass, reported as `error IMPORTS: Fix imports
+ordering`, that switches on if either key is present - at *any* value, including `false`. It then
+sorts flat-alphabetically after System, which puts first party above the vendors. It is not a
+diagnostic: it has no severity, and setting `dotnet_diagnostic.IDE0055.severity = none` does not
+reach it.
+
+The result is a loop rather than a wrong layout. Each run reorders in the style stage, UA1000 puts it
+back in the analyzers stage, and the file on disk never changes - so `dotnet format` reports nothing
+to do while `dotnet format --verify-no-changes` exits 2 forever, and CI stays red with no way to
+satisfy it.
 
 ## Which other rules this touches
 
 Measured rather than reasoned about, against StyleCop.Analyzers 1.2.0.556 with every `Style` category
-rule at warning, on a canonical file including statics and aliases.
+rule at warning, on a canonical file including statics and aliases. Measured against `dotnet format`
+as well as against the build: a rule can be silent as a diagnostic and still be enforced by a
+formatting stage that reports no diagnostic at all.
 
-**Conflicts. These two must be configured, or the layout will not build clean.**
+**Conflicts. These three must be settled, or the layout will not build clean.**
 
 | Rule | What happens | Settle it with |
 |------|--------------|----------------|
 | `SA1210` | Sorts the whole list alphabetically, so it wants third party and first party interleaved - precisely the split this scheme creates. Every laid-out file becomes a warning, and under `TreatWarningsAsErrors` a broken build. | `dotnet_diagnostic.SA1210.severity = none`. UA1000 takes over sorting entirely. |
-| `IDE0055` | Fires *only* when `dotnet_separate_import_directive_groups = true`, because that option wants blank lines by first-level namespace. Under `EnforceCodeStyleInBuild` it is a build warning, not merely the editor regrouping behind you. | `dotnet_separate_import_directive_groups = false`, which clears it with everything else held constant. |
+| `IDE0055` | Fires *only* when `dotnet_separate_import_directive_groups = true`, because that option wants blank lines by first-level namespace. Under `EnforceCodeStyleInBuild` it is a build warning, not merely the editor regrouping behind you. | Remove the key. Setting it to `false` silences IDE0055 but arms `IMPORTS` below, which is worse. |
+| `IMPORTS` | Not a rule but a stage of `dotnet format style`, armed by the mere presence of `dotnet_sort_system_directives_first` or `dotnet_separate_import_directive_groups` at any value. It sorts flat-alphabetically after System, contradicting the first-party block, and no severity setting reaches it. `dotnet format` then makes no change while `--verify-no-changes` exits 2 permanently. | Remove both keys. They configure a sorter that UA1000 has replaced, so there is nothing left for them to do. |
 
 **A trap that is not this analyser's doing.** `SA1200` fires on every using under StyleCop's defaults,
 because it wants them *inside* the namespace. Declaring
@@ -188,9 +208,19 @@ analyser applies.
 
 **Compatible, verified silent on the canonical layout:** `SA1208` (System first), `SA1209` (aliases
 last), `SA1211` (aliases alphabetical), `SA1216` and `SA1217` (`using static` placement and order),
-`SA1516` - including with `stylecop.layout.allowConsecutiveUsings = false` - and
-`dotnet_sort_system_directives_first = true`. `IDE0005` is orthogonal: it removes usings nothing
-needs, which is a separate question from where the rest go.
+and `SA1516` - including with `stylecop.layout.allowConsecutiveUsings = false`. `IDE0005` is
+orthogonal: it removes usings nothing needs, which is a separate question from where the rest go.
+
+`dotnet_sort_system_directives_first = true` used to be listed here, and as a diagnostic it is indeed
+silent - UA1000 already sorts System first, so there is nothing for it to report. That was measured
+against the build alone, which missed that the key also arms the `IMPORTS` stage above. Silent is not
+the same as harmless.
+
+One thing removing these keys does cost, measured rather than waved away: with
+`dotnet_separate_import_directive_groups = true`, SA1516 reports a missing blank line between using
+groups, and with the key absent or `false` it does not. UA1001 already requires that blank line, and
+knows first party from vendor where SA1516 only ever saw first-level namespaces, so the check is not
+lost - only the second, blunter copy of it.
 
 Sorting is case-insensitive, deliberately matching what SA1210 accepts. Ordinal comparison would put
 `CSharp` above `CodeActions`, since `S` sits below `o` in character order, and this rule would then
