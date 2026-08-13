@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 
@@ -24,6 +26,9 @@ public sealed class UsingLayoutAnalyzer : DiagnosticAnalyzer
     /// <summary>The directives are in the right order but the blank lines between them are not.</summary>
     public const string SeparationDiagnosticId = "UA1001";
 
+    /// <summary>Something else is configured to rewrite the using block, and will fight this one.</summary>
+    public const string ConflictDiagnosticId = "UA1002";
+
     private static readonly DiagnosticDescriptor OrderRule = new(
         OrderDiagnosticId,
         title: "Using directives are out of order",
@@ -42,9 +47,28 @@ public sealed class UsingLayoutAnalyzer : DiagnosticAnalyzer
         isEnabledByDefault: true,
         description: $"Set {UsingLayoutOptions.FirstPartyPrefixesKey} in .editorconfig to the namespace roots that belong to this solution.");
 
+    private static readonly DiagnosticDescriptor ConflictRule = new(
+        ConflictDiagnosticId,
+        title: "A configured setting will fight this using layout",
+        messageFormat: "'{0}' will fight the layout UA1000 enforces - {1}",
+        category: "Ordering",
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "Something else is configured to rewrite the using block, and two fixes that disagree do "
+            + "not settle - they undo each other on every pass. A rule with an opinion and no fix only warns, "
+            + "which is survivable; a second fix is what turns disagreement into motion. Neither case this "
+            + "reports is visible in a build log: the organize-imports stage of 'dotnet format style' emits no "
+            + "diagnostic at all, and SA1210 emits one far milder than what it does under 'dotnet format'. "
+            + "Reported once per project rather than per file, because it is one setting that is wrong rather "
+            + "than one mistake per file that happens to contain a using directive.",
+        // A compilation-end diagnostic, because it is reported for the project rather than for a file.
+        // The tag is not decoration: it is how the IDE knows to hold the report until a full analysis,
+        // instead of dropping it when it looks at one file on its own.
+        customTags: new[] { WellKnownDiagnosticTags.CompilationEnd });
+
     /// <inheritdoc/>
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
-        ImmutableArray.Create(OrderRule, SeparationRule);
+        ImmutableArray.Create(OrderRule, SeparationRule, ConflictRule);
 
     /// <inheritdoc/>
     public override void Initialize(AnalysisContext context)
@@ -55,6 +79,78 @@ public sealed class UsingLayoutAnalyzer : DiagnosticAnalyzer
         // A syntax tree action, not a semantic one: classification is a question about the text of a
         // namespace, so the analyser never needs a compilation and never waits for one.
         context.RegisterSyntaxTreeAction(Analyze);
+
+        // UA1002 is about the project's configuration rather than any one file, so it is reported once
+        // for the compilation instead of once per file. A misconfigured repository would otherwise
+        // answer with one warning per source file, which buries the single thing to change.
+        context.RegisterCompilationAction(AnalyzeConfiguration);
+    }
+
+    /// <summary>
+    /// Reports the settings that will rewrite the using block behind this analyser's back. Once each,
+    /// with no location: an .editorconfig key has no span in any source file, and pointing at whichever
+    /// using directive happened to be first would be inventing one.
+    /// </summary>
+    private static void AnalyzeConfiguration(CompilationAnalysisContext context)
+    {
+        var reported = new HashSet<string>(StringComparer.Ordinal);
+
+        // Per tree, because .editorconfig applies per path and a setting can be confined to one
+        // directory - a project-wide read would miss that. The set is what keeps it to one report:
+        // whichever file first brings a setting into force is the one that gets to say so.
+        var severities = context.Compilation.Options.SyntaxTreeOptionsProvider;
+
+        // Once, for the whole compilation, because a .globalconfig severity belongs to no tree. Asking
+        // only the per-tree map missed this entirely: an .editorconfig writes SA1210 under [*.cs] and a
+        // .globalconfig writes it globally, and a package that ships its rules as a globalconfig - which
+        // is the usual way to ship them - lands only here.
+        if (severities is not null
+            && severities.TryGetGlobalDiagnosticValue(
+                ConflictingSettings.StyleCopOrderingRule, context.CancellationToken, out var configured)
+            && ConflictingSettings.IsActedOn(configured))
+        {
+            Report(
+                context,
+                reported,
+                ConflictingSettings.StyleCopOrderingSeverityKey,
+                ConflictingSettings.StyleCopRemedy);
+        }
+
+        foreach (var tree in context.Compilation.SyntaxTrees)
+        {
+            var options = context.Options.AnalyzerConfigOptionsProvider.GetOptions(tree);
+
+            foreach (var (key, remedy) in ConflictingSettings.InForce(options))
+            {
+                Report(context, reported, key, remedy);
+            }
+
+            // SA1210's severity cannot be read off the options above: the compiler takes
+            // dotnet_diagnostic.*.severity out of the configuration and turns it into this map, so it
+            // never arrives as an ordinary key. Asking the map is also the better question, since it
+            // answers what is in force rather than what one file happened to write down.
+            if (severities is not null
+                && severities.TryGetDiagnosticValue(
+                    tree, ConflictingSettings.StyleCopOrderingRule, context.CancellationToken, out var severity)
+                && ConflictingSettings.IsActedOn(severity))
+            {
+                Report(
+                    context,
+                    reported,
+                    ConflictingSettings.StyleCopOrderingSeverityKey,
+                    ConflictingSettings.StyleCopRemedy);
+            }
+        }
+    }
+
+    /// <summary>Reports a setting the first time it is seen, and says nothing about it again.</summary>
+    private static void Report(
+        CompilationAnalysisContext context, HashSet<string> reported, string key, string remedy)
+    {
+        if (reported.Add(key))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(ConflictRule, Location.None, key, remedy));
+        }
     }
 
     private static void Analyze(SyntaxTreeAnalysisContext context)

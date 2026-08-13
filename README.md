@@ -133,10 +133,30 @@ should not be the thing that fails a build.
 |--------|------------------------------------------------------------------|
 | UA1000 | The directives are in the wrong order.                            |
 | UA1001 | The order is right but the blank lines between blocks are not.    |
+| UA1002 | Something else is configured to rewrite the using block.          |
 
-Both are warnings by default, both are fixable, and at most one is reported per file - the fix
-rewrites the whole block in a single edit, so a report per misplaced line would be one problem
-described N times.
+All three are warnings by default. UA1000 and UA1001 are fixable, and at most one is reported per
+file - the fix rewrites the whole block in a single edit, so a report per misplaced line would be one
+problem described N times.
+
+UA1002 is the odd one. It is about the project's configuration rather than any file's contents, so it
+is reported once per project with no location, and it is not fixable - a code fix edits source, and
+what is wrong here is an `.editorconfig`. It fires on:
+
+- `dotnet_sort_system_directives_first`, present at any value
+- `dotnet_separate_import_directive_groups`, present at any value
+- `dotnet_diagnostic.SA1210.severity` set to `warning` or `error`
+
+The first two are checked for *presence*, because that is the actual trigger - `= false` reads like
+switching the thing off and does exactly what `= true` does. The third is checked against the
+compilation's severity map rather than read as a key, since the compiler takes
+`dotnet_diagnostic.*.severity` out of the configuration before an analyser ever sees it.
+
+**Silence from UA1002 is not a clean bill of health**, and the gap is worth knowing. If SA1210 is left
+unset, what happens is StyleCop's own default, and no analyser can read another package's defaults -
+so unset is *unknown* here rather than safe. Below `warning` it stays quiet on purpose: `dotnet
+format` fixes at `warn` and above unless told otherwise, so a suggestion puts no second fix in play
+and reporting it would be crying wolf.
 
 ## Installing
 
@@ -236,6 +256,9 @@ SA1210 = warning, three consecutive dotnet format runs
 maddening but at least stable. `SA1210` produces a genuine diff every single time anyone runs
 `dotnet format`, which means spurious commits and merge conflicts between people who ran it at
 different moments.
+
+Both are what UA1002 reports, so this table is a description of a rule rather than a list of things
+to remember. Neither had to be remembered by anybody after they cost a consumer a day each.
 
 **A trap that is not this analyser's doing.** `SA1200` fires on every using under StyleCop's defaults,
 because it wants them *inside* the namespace. Declaring

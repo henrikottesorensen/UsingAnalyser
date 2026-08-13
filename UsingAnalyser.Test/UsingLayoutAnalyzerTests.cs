@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Testing;
 
@@ -696,6 +697,174 @@ public class UsingLayoutAnalyzerTests
     /// a syntax tree action and never asks what a name binds to. Each setting is written only when
     /// the case names it, so unset really is unset rather than a default written out longhand.
     /// </summary>
+    [Fact]
+    public async Task CleanConfigurationReportsNoConflict()
+    {
+        await VerifyConfigurationAsync("");
+    }
+
+    [Theory]
+    [InlineData("true")]
+    [InlineData("false")]
+    public async Task SortSystemDirectivesFirstIsReportedAtAnyValue(string value)
+    {
+        // The whole point of the rule. "= false" reads like switching the thing off and is identical to
+        // switching it on, because dotnet format only asks whether the key is there.
+        await VerifyConfigurationAsync(
+            $"{ConflictingSettings.SortSystemDirectivesFirstKey} = {value}",
+            ConflictingSettings.SortSystemDirectivesFirstKey);
+    }
+
+    [Theory]
+    [InlineData("true")]
+    [InlineData("false")]
+    public async Task SeparateImportDirectiveGroupsIsReportedAtAnyValue(string value)
+    {
+        await VerifyConfigurationAsync(
+            $"{ConflictingSettings.SeparateImportDirectiveGroupsKey} = {value}",
+            ConflictingSettings.SeparateImportDirectiveGroupsKey);
+    }
+
+    [Fact]
+    public async Task BothImportKeysAreReportedSeparately()
+    {
+        // Two keys, two things to delete. One report naming only the first would leave the second in
+        // place and the build still broken after doing as it asked.
+        await VerifyConfigurationAsync(
+            $"""
+            {ConflictingSettings.SortSystemDirectivesFirstKey} = true
+            {ConflictingSettings.SeparateImportDirectiveGroupsKey} = true
+            """,
+            ConflictingSettings.SortSystemDirectivesFirstKey,
+            ConflictingSettings.SeparateImportDirectiveGroupsKey);
+    }
+
+    [Theory]
+    [InlineData("warning")]
+    [InlineData("error")]
+    [InlineData("Warning")]
+    public async Task StyleCopOrderingIsReportedWhenTurnedUp(string severity)
+    {
+        await VerifyConfigurationAsync(
+            $"{ConflictingSettings.StyleCopOrderingSeverityKey} = {severity}",
+            ConflictingSettings.StyleCopOrderingSeverityKey);
+    }
+
+    [Theory]
+    [InlineData("none")]
+    [InlineData("silent")]
+    [InlineData("suggestion")]
+    public async Task StyleCopOrderingIsLeftAloneBelowWarning(string severity)
+    {
+        // dotnet format fixes at warn and above by default, so below that SA1210 has no fix in play and
+        // there is nothing for the two to fight over. Reporting here would be crying wolf.
+        await VerifyConfigurationAsync($"{ConflictingSettings.StyleCopOrderingSeverityKey} = {severity}");
+    }
+
+    [Fact]
+    public async Task StyleCopOrderingIsReportedWhenSetInAGlobalConfig()
+    {
+        // The case the .editorconfig tests do not reach, and the one that matters most: a package that
+        // ships rule severities ships them as a .globalconfig, which belongs to no file. Reading only
+        // the per-tree severities found nothing here, and every consumer configured that way - which is
+        // all of them, since that is how a rules package is delivered - would have gone unwarned.
+        await VerifyGlobalConfigurationAsync(
+            $"{ConflictingSettings.StyleCopOrderingSeverityKey} = warning",
+            ConflictingSettings.StyleCopOrderingSeverityKey);
+    }
+
+    [Fact]
+    public async Task ImportKeysAreReportedWhenSetInAGlobalConfig()
+    {
+        await VerifyGlobalConfigurationAsync(
+            $"{ConflictingSettings.SortSystemDirectivesFirstKey} = false",
+            ConflictingSettings.SortSystemDirectivesFirstKey);
+    }
+
+    [Fact]
+    public async Task StyleCopOrderingLeftUnsetIsNotReported()
+    {
+        // The blind spot, stated as a test so that nobody mistakes silence for a clean bill of health.
+        // SA1210's own default is StyleCop's business, and no analyser can read another package's
+        // defaults - so an unset key is unknown here, not safe.
+        await VerifyConfigurationAsync("");
+    }
+
+    /// <summary>
+    /// Runs the canonical layout against <paramref name="settings"/>, which are written into
+    /// .editorconfig verbatim, and asserts exactly which UA1002 reports come back.
+    /// </summary>
+    /// <remarks>
+    /// The layout here is already correct, so UA1000 and UA1001 have nothing to say and anything
+    /// reported is the configuration check. The expected diagnostics are given rather than marked up
+    /// in the source because UA1002 has no location: an .editorconfig key has no span in a .cs file.
+    /// </remarks>
+    /// <summary>The settings written into .editorconfig, under <c>[*.cs]</c>.</summary>
+    private static Task VerifyConfigurationAsync(string settings, params string[] expectedKeys) =>
+        VerifyConfigurationCoreAsync(settings, globalSettings: null, expectedKeys);
+
+    /// <summary>The settings written into a .globalconfig, which belongs to no file.</summary>
+    private static Task VerifyGlobalConfigurationAsync(string globalSettings, params string[] expectedKeys) =>
+        VerifyConfigurationCoreAsync(settings: "", globalSettings, expectedKeys);
+
+    private static async Task VerifyConfigurationCoreAsync(
+        string settings, string? globalSettings, string[] expectedKeys)
+    {
+        const string Source = """
+            using System;
+
+            using Gizmo.Widget;
+
+            using SolutionPrefix.Host;
+
+            internal class C;
+            """;
+
+        // The same harness the layout cases use. UA1002 is not in the fixer's FixableDiagnosticIds, so
+        // nothing is offered for it and the fixed source is the source unchanged - which is itself worth
+        // asserting: a configuration mistake is not something a code fix can put right.
+        var test = new CSharpCodeFixTest<UsingLayoutAnalyzer, UsingLayoutCodeFixProvider, DefaultVerifier>
+        {
+            TestCode = Source,
+            FixedCode = Source,
+            CompilerDiagnostics = CompilerDiagnostics.None,
+        };
+
+        test.TestState.AnalyzerConfigFiles.Add((
+            "/.editorconfig",
+            $"root = true\n[*.cs]\n{UsingLayoutOptions.FirstPartyPrefixesKey} = SolutionPrefix\n{settings}\n"));
+
+        // A second file with is_global, which is how a rules package delivers severities: it applies to
+        // every file and belongs to none, and the analyser has to ask a different question to see it.
+        if (globalSettings is not null)
+        {
+            test.TestState.AnalyzerConfigFiles.Add(("/.globalconfig", $"is_global = true\n{globalSettings}\n"));
+        }
+
+        foreach (var key in expectedKeys)
+        {
+            test.ExpectedDiagnostics.Add(
+                new DiagnosticResult(UsingLayoutAnalyzer.ConflictDiagnosticId, DiagnosticSeverity.Warning)
+                    .WithArguments(key, RemedyFor(key)));
+        }
+
+        await test.RunAsync();
+    }
+
+    /// <summary>
+    /// The remedy text UA1002 pairs with a key. Reproduced here rather than read off the analyser, so
+    /// that a change to what the message tells people has to be made deliberately in two places.
+    /// </summary>
+    private static string RemedyFor(string key) => key switch
+    {
+        ConflictingSettings.StyleCopOrderingSeverityKey =>
+            "set it to none, since SA1210 has a fix of its own and under 'dotnet format' the two rewrite the "
+            + "using block in turn, changing the file on every run",
+        _ =>
+            "remove the key, since its presence at any value, including false, turns on the organize-imports "
+            + "stage of 'dotnet format style' and leaves 'dotnet format --verify-no-changes' failing permanently",
+    };
+
     private static async Task VerifyAsync(
         string source,
         string? fixedSource = null,
